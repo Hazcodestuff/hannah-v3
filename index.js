@@ -647,21 +647,18 @@ class HannahBot {
         });
         
         // Update the 'ready' event:
+// Update the 'ready' event:
 this.client.on('ready', async () => { 
     Logger.system('Hannah is ready! 🌟');
     
-    // Save session to both local file and Google Drive
-    Logger.system('Saving session to local file...');
-    await sessionManager.saveSessionLocally();
-    
-    Logger.system('Saving session to Google Drive...');
-    await sessionManager.saveSessionToDrive();
-    
-    Logger.system('Session saved to both local file and Google Drive');
-    
     // Load memory
     await loadMemory(); 
+    
+    // Save session to Google Drive for future use
+    Logger.system('Saving session to Google Drive...');
+    await sessionManager.saveSessionToDrive();
 });
+
         
         // Disconnected
         this.client.on('disconnected', async (reason) => {
@@ -728,6 +725,41 @@ if (messageBody.toLowerCase().includes('upload session')) {
             "check the logs for errors"
         ], userMemory.contactInfo.name);
     }
+    
+    return;
+}
+
+if (messageBody.toLowerCase().includes('save session')) {
+    Logger.system('Manual session save requested');
+    
+    // Save session to Google Drive
+    const success = await sessionManager.saveSessionToDrive();
+    
+    if (success) {
+        await sendMultipleMessages(this.client, contactId, [
+            "session saved to google drive",
+            "you can now upload this to render"
+        ], userMemory.contactInfo.name);
+    } else {
+        await sendMultipleMessages(this.client, contactId, [
+            "failed to save session",
+            "check the logs for errors"
+        ], userMemory.contactInfo.name);
+    }
+    
+    return;
+}
+
+if (messageBody.toLowerCase().includes('clear session')) {
+    Logger.system('Manual session clear requested');
+    
+    // Clear local session
+    sessionManager.clearLocalSession();
+    
+    await sendMultipleMessages(this.client, contactId, [
+        "local session cleared",
+        "restart the bot to re-authenticate"
+    ], userMemory.contactInfo.name);
     
     return;
 }
@@ -860,33 +892,23 @@ if (messageBody.toLowerCase().includes('clear session')) {
     async initialize() {
     Logger.system('=== SESSION RESTORATION PROCESS ===');
     
-    // Authenticate with Google
-    Logger.system('Authenticating with Google...');
-    const googleAuth = await sessionManager.authenticate();
+    // Step 1: Try to load session from Google Drive
+    Logger.system('Step 1: Attempting to restore session from Google Drive...');
+    const driveSessionRestored = await sessionManager.loadSessionFromDrive();
     
-    // Step 1: Try to load session from Google Drive first
-    if (googleAuth) {
-        Logger.system('Step 1: Attempting to restore session from Google Drive...');
-        const driveSessionRestored = await sessionManager.loadSessionFromDrive();
+    if (driveSessionRestored) {
+        Logger.system('✓ Session restored successfully from Google Drive');
+    } else {
+        Logger.system('✗ Session not found in Google Drive');
         
-        if (driveSessionRestored) {
-            Logger.system('✓ Session restored successfully from Google Drive');
+        // Step 2: Check if local session exists
+        Logger.system('Step 2: Checking for local session...');
+        if (sessionManager.hasLocalSession()) {
+            Logger.system('✓ Local session found');
         } else {
-            Logger.system('✗ Session not found in Google Drive');
+            Logger.system('✗ No local session found');
+            Logger.system('QR code will be required for authentication');
         }
-    } else {
-        Logger.system('Skipping Google Drive - not authenticated with Google');
-    }
-    
-    // Step 2: Try to load session from local file
-    Logger.system('Step 2: Attempting to restore session from local file...');
-    const localSessionRestored = await sessionManager.loadSessionFromLocal();
-    
-    if (localSessionRestored) {
-        Logger.system('✓ Session restored successfully from local file');
-    } else {
-        Logger.system('✗ No local session found');
-        Logger.system('QR code will be required for authentication');
     }
     
     Logger.system('=== END SESSION RESTORATION PROCESS ===');

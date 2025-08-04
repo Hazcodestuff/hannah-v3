@@ -1,24 +1,11 @@
 {
-  "name": "hannah-whatsapp-bot",
-  "version": "1.0.0",
-  "description": "Hannah WhatsApp Bot",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
-  },
   "dependencies": {
+    "adm-zip": "^0.5.10",
     "axios": "^1.6.0",
     "googleapis": "^128.0.0",
     "groq-sdk": "^0.3.0",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.23.0",
     "dotenv": "^16.3.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
-  "engines": {
-    "node": ">=18.0.0"
   }
 }

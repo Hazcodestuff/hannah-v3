@@ -6,12 +6,13 @@ node_modules/
 
 # WhatsApp session data
 .wwebjs_auth/
+.temp_session/
 hannah-session.json
+hannah-session.zip
+hannah-session-downloaded.zip
 
 # Google credentials
 credentials.json
-oauth-credentials.json
-oauth-token.json
 
 # Logs
 logs/

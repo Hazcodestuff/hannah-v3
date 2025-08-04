@@ -11,5 +11,3 @@ services:
         sync: false # Set this in the Render dashboard
       - key: GROQ_API_KEY
         sync: false # Set this in the Render dashboard
-      - key: GOOGLE_OAUTH_CREDENTIALS
-        sync: false # Set this in the Render dashboard
