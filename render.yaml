@@ -11,7 +11,5 @@ services:
         sync: false # Set this in the Render dashboard
       - key: GROQ_API_KEY
         sync: false # Set this in the Render dashboard
-    disk:
-      name: whatsapp-session
-      mountPath: /app/.wwebjs_auth
-      sizeGB: 1
+      - key: GOOGLE_OAUTH_CREDENTIALS
+        sync: false # Set this in the Render dashboard

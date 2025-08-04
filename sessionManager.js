@@ -3,27 +3,28 @@ const path = require('path');
 const Logger = require('./logger.js');
 
 // Define paths
-const LOCAL_SESSION_PATH = path.join(__dirname, '.wwebjs_auth');
-const SESSION_EXPORT_PATH = path.join(__dirname, 'hannah-session.json');
-const OAUTH_CREDENTIALS_PATH = path.join(__dirname, 'oauth-credentials.json');
-const OAUTH_TOKEN_PATH = path.join(__dirname, 'oauth-token.json');
+const LOCAL_SESSION_PATH = path.join(process.cwd(), '.wwebjs_auth');
+const SESSION_EXPORT_PATH = path.join(process.cwd(), 'hannah-session.json');
 
 // Google Drive setup with OAuth2
 const { google } = require('googleapis');
 const OAuth2 = google.auth.OAuth2;
 
-// Load OAuth2 credentials
+// Load OAuth2 credentials from environment variable
 let oauth2Client;
-if (fs.existsSync(OAUTH_CREDENTIALS_PATH)) {
-    const credentials = JSON.parse(fs.readFileSync(OAUTH_CREDENTIALS_PATH));
-    oauth2Client = new OAuth2(
-        credentials.installed.client_id,
-        credentials.installed.client_secret,
-        credentials.installed.redirect_uris[0]
-    );
-} else {
-    Logger.error('OAuth2 credentials file not found. Please create oauth-credentials.json');
-    process.exit(1);
+try {
+    if (process.env.GOOGLE_OAUTH_CREDENTIALS) {
+        const credentials = JSON.parse(process.env.GOOGLE_OAUTH_CREDENTIALS);
+        oauth2Client = new OAuth2(
+            credentials.installed.client_id,
+            credentials.installed.client_secret,
+            credentials.installed.redirect_uris[0]
+        );
+    } else {
+        Logger.error('Google OAuth2 credentials not found in environment variables');
+    }
+} catch (error) {
+    Logger.error('Error parsing Google OAuth2 credentials', error.message);
 }
 
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
@@ -34,50 +35,43 @@ class SessionManager {
     constructor() {
         this.sessionFileId = null;
         this.isAuthenticated = false;
+        this.oauthToken = null;
     }
 
     // Authenticate with Google using OAuth2
     async authenticate() {
         try {
-            // Check if we already have a valid token
-            if (fs.existsSync(OAUTH_TOKEN_PATH)) {
-                const token = JSON.parse(fs.readFileSync(OAUTH_TOKEN_PATH));
-                oauth2Client.setCredentials(token);
-                
-                // Check if token is expired
-                const expiryDate = new Date(token.expiry_date);
-                if (expiryDate > new Date()) {
-                    this.isAuthenticated = true;
-                    Logger.system('Authenticated with Google using existing token');
-                    return true;
-                } else {
-                    Logger.system('OAuth token expired, refreshing...');
-                    // Try to refresh the token
-                    try {
-                        const { credentials } = await oauth2Client.refreshAccessToken();
-                        fs.writeFileSync(OAUTH_TOKEN_PATH, JSON.stringify(credentials));
+            // Check if we have OAuth token in environment variables
+            if (process.env.GOOGLE_OAUTH_TOKEN) {
+                try {
+                    const token = JSON.parse(process.env.GOOGLE_OAUTH_TOKEN);
+                    oauth2Client.setCredentials(token);
+                    
+                    // Check if token is expired
+                    const expiryDate = new Date(token.expiry_date);
+                    if (expiryDate > new Date()) {
                         this.isAuthenticated = true;
-                        Logger.system('OAuth token refreshed successfully');
+                        Logger.system('Authenticated with Google using environment token');
                         return true;
-                    } catch (refreshError) {
-                        Logger.error('Failed to refresh OAuth token', refreshError.message);
+                    } else {
+                        Logger.system('OAuth token expired, attempting to refresh...');
+                        try {
+                            const { credentials } = await oauth2Client.refreshAccessToken();
+                            // Update the environment variable
+                            process.env.GOOGLE_OAUTH_TOKEN = JSON.stringify(credentials);
+                            this.isAuthenticated = true;
+                            Logger.system('OAuth token refreshed successfully');
+                            return true;
+                        } catch (refreshError) {
+                            Logger.error('Failed to refresh OAuth token', refreshError.message);
+                        }
                     }
+                } catch (tokenError) {
+                    Logger.error('Error parsing OAuth token from environment', tokenError.message);
                 }
             }
             
-            // If we don't have a valid token, generate an auth URL
-            const authUrl = oauth2Client.generateAuthUrl({
-                access_type: 'offline',
-                scope: ['https://www.googleapis.com/auth/drive'],
-            });
-            
-            Logger.system('=== GOOGLE AUTHENTICATION REQUIRED ===');
-            Logger.system('Please visit the following URL to authorize the application:');
-            Logger.system(authUrl);
-            Logger.system('After authorization, you will receive a code. Enter it below:');
-            
-            // For now, we'll skip Google Drive authentication and continue
-            Logger.system('Skipping Google Drive authentication for now...');
+            Logger.system('Google authentication required. Please check the logs for the OAuth URL.');
             this.isAuthenticated = false;
             return false;
         } catch (error) {
@@ -92,9 +86,13 @@ class SessionManager {
         try {
             const { tokens } = await oauth2Client.getToken(code);
             oauth2Client.setCredentials(tokens);
-            fs.writeFileSync(OAUTH_TOKEN_PATH, JSON.stringify(tokens));
+            
+            // Store the token in environment variable
+            this.oauthToken = JSON.stringify(tokens);
+            process.env.GOOGLE_OAUTH_TOKEN = this.oauthToken;
+            
             this.isAuthenticated = true;
-            Logger.system('OAuth2 token saved successfully');
+            Logger.system('OAuth2 token set successfully');
             return true;
         } catch (error) {
             Logger.error('Error setting OAuth2 token', error.message);
