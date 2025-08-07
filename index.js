@@ -1,5 +1,6 @@
 // index.js (Baileys Version - Fixed)
 require('dotenv').config();
+const http = require('http'); // Add this import
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
@@ -36,6 +37,32 @@ let memoryData = {
     globalMemories: [],
     isPraying: false
 };
+
+// Create HTTP server for Render health checks
+const server = http.createServer((req, res) => {
+    // Simple health check endpoint
+    if (req.url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+            status: 'ok', 
+            message: 'WhatsApp bot is running',
+            timestamp: new Date().toISOString()
+        }));
+    } else {
+        // For all other routes, return a simple message
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('WhatsApp bot is running. Health check: /health');
+    }
+});
+
+// Get port from environment or default to 10000
+const PORT = process.env.PORT || 10000;
+
+// Start the server
+server.listen(PORT, () => {
+    Logger.system(`HTTP server listening on port ${PORT} for health checks`);
+});
+
 
 // Load memory from Google Drive
 async function loadMemory() {
@@ -697,4 +724,15 @@ process.on('SIGINT', async () => {
 process.on('uncaughtException', (err) => {
     Logger.error('Uncaught Exception:', err.message);
     // Depending on the error, you might want to restart or just log
+});
+
+// Add this to the end of your index.js
+process.on('unhandledRejection', (reason, promise) => {
+    Logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit the process, just log the error
+});
+
+process.on('uncaughtException', (error) => {
+    Logger.error('Uncaught Exception:', error);
+    // Don't exit the process, just log the error
 });
