@@ -238,10 +238,9 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
     }
 }
 
-// --- MESSAGE SENDING FUNCTION ---
-// --- MESSAGE SENDING FUNCTION (SIMPLIFIED VERSION) ---
-// --- MESSAGE SENDING FUNCTION (UPDATED FOR MULTI-MESSAGE) ---
-// Add this function to hannah.js
+// --- MESSAGE SENDING FUNCTIONS ---
+
+// Split message into parts for multi-message sending
 function splitMessageIntoParts(message) {
     // Split by common sentence separators
     const parts = message.split(/(?<=[.!?])\s+/);
@@ -260,137 +259,81 @@ function splitMessageIntoParts(message) {
     return nonEmptyParts;
 }
 
-async function sendHannahsMessage(client, chatId, text, userName, typingMultiplier = 60) {
-    if (!text || text.trim() === "") return null;
+// Main message sending function updated for Baileys
+async function sendHannahsMessage(client, chatId, text, userName) {
+    if (!text || !text.trim()) return;
     
     try {
         Logger.debug(`Raw AI response: ${text}`);
         
-        // Parse action blocks
+        // Check if the response is an action block
         const actionBlockMatch = text.match(/\[ACTION_BLOCK\]([\s\S]*?)\[\/ACTION_BLOCK\]/);
         if (!actionBlockMatch) {
-            Logger.debug(`No action block found in response: ${text}`);
-            // If no action block, try to send the raw text as a fallback
-            return await sendMultipleMessages(client, chatId, [text], userName);
+            Logger.debug(`No action block found. Sending raw text: ${text}`);
+            await client.sendMessage(chatId, { text: text });
+            return;
         }
         
         const actionBlockContent = actionBlockMatch[1];
         Logger.debug(`Action block content: ${actionBlockContent}`);
         
-        // Extract all messages from the action block
-        const messages = [];
+        // Extract all messages from any valid tag ([TEXT], [RANT], [SULK], [PONDER])
+        const messageMatches = [...actionBlockContent.matchAll(/\[(TEXT|RANT|SULK|PONDER)\]([\s\S]*?)\[\/\1\]/g)];
         
-        // Parse TEXT tags
-        const textMatches = [...actionBlockContent.matchAll(/\[TEXT\]([\s\S]*?)\[\/TEXT\]/g)];
-        for (const match of textMatches) {
-            messages.push({ type: 'text', content: match[1].trim() });
+        let messageTexts = messageMatches.map(match => match[2].trim()).filter(Boolean);
+        
+        // Check for reactions
+        const reactionMatches = [...actionBlockContent.matchAll(/\[REACT\]([👍😂❤️😮🤔🙏😊🙄]+)\[\/REACT\]/g)];
+        
+        // If no message tags found but there's content, use the whole action block as a single message
+        if (messageTexts.length === 0 && actionBlockContent.trim()) {
+            messageTexts.push(actionBlockContent.trim());
         }
         
-        // Parse RANT tags
-        const rantMatches = [...actionBlockContent.matchAll(/\[RANT\]([\s\S]*?)\[\/RANT\]/g)];
-        for (const match of rantMatches) {
-            messages.push({ type: 'text', content: match[1].trim() });
+        // If still no messages, send a default response
+        if (messageTexts.length === 0) {
+            Logger.debug('No message tags found in action block. Sending default "ok".');
+            messageTexts.push('ok');
         }
         
-        // Parse SULK tags
-        const sulkMatches = [...actionBlockContent.matchAll(/\[SULK\]([\s\S]*?)\[\/SULK\]/g)];
-        for (const match of sulkMatches) {
-            messages.push({ type: 'text', content: match[1].trim() });
-        }
+        Logger.debug(`Sending ${messageTexts.length} messages...`);
         
-        // Parse PONDER tags
-        const ponderMatches = [...actionBlockContent.matchAll(/\[PONDER\]([\s\S]*?)\[\/PONDER\]/g)];
-        for (const match of ponderMatches) {
-            messages.push({ type: 'text', content: match[1].trim() });
-        }
-        
-        // Parse REACT tags
-        const reactMatches = [...actionBlockContent.matchAll(/\[REACT\]([^\[]*?)\[\/REACT\]/g)];
-        for (const match of reactMatches) {
-            if (messages.length > 0) {
-                // Add reaction to the last message
-                messages[messages.length - 1].reaction = match[1].trim();
-            }
-        }
-        
-        // If no messages found, create a simple response
-        if (messages.length === 0) {
-            messages.push({ type: 'text', content: 'ok' });
-        }
-        
-        // Extract just the text content for sending
-        let messageTexts = messages.map(msg => {
-            let text = msg.content;
-            if (msg.reaction && Math.random() > 0.7) {
-                text += ' ' + msg.reaction;
-            }
-            return text;
-        });
-        
-        // If we only have one message, try to split it
-        if (messageTexts.length === 1) {
-            const splitParts = splitMessageIntoParts(messageTexts[0]);
-            if (splitParts.length > 1) {
-                messageTexts = splitParts;
-                Logger.debug(`Split single message into ${splitParts.length} parts`);
-            }
-        }
-        
-        Logger.debug(`Final message count: ${messageTexts.length}`);
-        Logger.debug(`Messages: ${messageTexts.join(' | ')}`);
-        
-        // Send multiple messages
-        return await sendMultipleMessages(client, chatId, messageTexts, userName);
-    } catch (error) {
-        Logger.error('Error in sendHannahsMessage', error.message);
-        return null;
-    }
-}
-
-// Function to send multiple messages with delays
-async function sendMultipleMessages(client, chatId, messageTexts, userName) {
-    const sentMessages = [];
-    
-    for (let i = 0; i < messageTexts.length; i++) {
-        const messageText = messageTexts[i];
-        
-        // Show typing indicator before each message
-        try {
-            const chat = await client.getChatById(chatId);
-            await chat.sendStateTyping();
-            Logger.debug('Typing indicator successful');
+        // Send multiple messages with realistic delays
+        for (let i = 0; i < messageTexts.length; i++) {
+            const message = messageTexts[i];
             
-            // Calculate typing delay based on message length
-            const typingDelay = (messageText.length * 60) + (Math.random() * 1000);
-            await new Promise(resolve => setTimeout(resolve, Math.min(typingDelay, 4000)));
-        } catch (error) {
-            Logger.debug('Typing indicator not supported');
+            // Simulate typing
+            await client.sendPresenceUpdate('composing', chatId);
+            
+            // Calculate a realistic delay based on message length
+            const typingDelay = (message.length * 80) + (Math.random() * 500); // 80ms per char + random delay
+            await new Promise(resolve => setTimeout(resolve, Math.min(typingDelay, 3000))); // Max 3 sec typing
+            
+            Logger.message(userName, message, '→');
+            await client.sendMessage(chatId, { text: message });
+            
+            // Add a small pause between messages if there are more to come
+            if (i < messageTexts.length - 1) {
+                await client.sendPresenceUpdate('paused', chatId);
+                await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
+            }
         }
         
-        // Send the message
-        Logger.message(userName, messageText, '→');
-        const sentMessage = await client.sendMessage(chatId, messageText);
-        sentMessages.push(sentMessage);
-        
-        // Add a delay between messages (except for the last one)
-        if (i < messageTexts.length - 1) {
-            // Random delay between 1-3 seconds
-            const betweenMessageDelay = 1000 + (Math.random() * 2000);
-            await new Promise(resolve => setTimeout(resolve, betweenMessageDelay));
+        // Send reaction if any (only for the last message)
+        if (reactionMatches.length > 0) {
+            const reaction = reactionMatches[0][1];
+            Logger.debug(`Sending reaction: ${reaction}`);
+            await client.sendMessage(chatId, { react: { text: reaction, key: null } });
         }
-    }
-    
-    // Try to clear typing state
-    try {
+        
+        // Clear typing indicator
         await client.sendPresenceUpdate('paused', chatId);
     } catch (error) {
-        // Silently ignore
+        Logger.error('Error in sendHannahsMessage (Baileys)', error.message);
     }
-    
-    return sentMessages.length > 0 ? sentMessages[sentMessages.length - 1] : null;
 }
 
-// New function to send multiple messages with delays
+// Function to send multiple messages with delays (updated for Baileys)
 async function sendMultipleMessages(client, chatId, messageTexts, userName) {
     const sentMessages = [];
     
@@ -399,8 +342,7 @@ async function sendMultipleMessages(client, chatId, messageTexts, userName) {
         
         // Show typing indicator before each message
         try {
-            const chat = await client.getChatById(chatId);
-            await chat.sendStateTyping();
+            await client.sendPresenceUpdate('composing', chatId);
             Logger.debug('Typing indicator successful');
             
             // Calculate typing delay based on message length
@@ -412,7 +354,7 @@ async function sendMultipleMessages(client, chatId, messageTexts, userName) {
         
         // Send the message
         Logger.message(userName, messageText, '→');
-        const sentMessage = await client.sendMessage(chatId, messageText);
+        const sentMessage = await client.sendMessage(chatId, { text: messageText });
         sentMessages.push(sentMessage);
         
         // Add a delay between messages (except for the last one)
@@ -437,5 +379,6 @@ async function sendMultipleMessages(client, chatId, messageTexts, userName) {
 module.exports = {
     hannahProfile,
     getAiResponse,
-    sendHannahsMessage
+    sendHannahsMessage,
+    sendMultipleMessages
 };

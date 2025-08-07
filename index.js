@@ -1,6 +1,13 @@
+// index.js (Baileys Version - Fixed)
 require('dotenv').config();
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason,
+    Browsers, // Added missing import
+    fetchLatestBaileysVersion // Recommended for version management
+} = require('@whiskeysockets/baileys');
+const pino = require('pino');
 const Logger = require('./logger.js');
 const SessionManager = require('./sessionManager');
 const sessionManager = new SessionManager();
@@ -120,11 +127,10 @@ async function rateLimit() {
     lastApiCall = Date.now();
 }
 
-// Add this function to test gossip
+// Test gossip system
 function testGossipSystem() {
     Logger.system('=== TESTING GOSSIP SYSTEM ===');
     
-    // Check if we have any weird interactions
     let weirdInteractionsFound = false;
     for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
         if (contact.weirdInteractions && contact.weirdInteractions.length > 0) {
@@ -140,7 +146,6 @@ function testGossipSystem() {
     if (!weirdInteractionsFound) {
         Logger.system('No weird interactions found. Creating test data...');
         
-        // Create test weird interaction
         const testContactId = 'test123@c.us';
         if (!memoryData.contactMemory[testContactId]) {
             memoryData.contactMemory[testContactId] = {
@@ -157,7 +162,6 @@ function testGossipSystem() {
             sharedWith: []
         });
         
-        // Trigger gossip
         triggerGossipAboutContact(testContactId, memoryData.contactMemory[testContactId].weirdInteractions[0]);
         
         Logger.system('Test weird interaction created and gossip triggered');
@@ -207,7 +211,6 @@ function updateConversationHistory(contactId, userMessage, hannahResponse) {
 }
 
 // Extract and store memories with enhanced keyword detection
-// Replace the extractAndStoreMemories function with this improved version:
 function extractAndStoreMemories(contactId, message, response) {
     const userMemory = memoryData.contactMemory[contactId];
     if (!userMemory) return;
@@ -268,7 +271,7 @@ function extractAndStoreMemories(contactId, message, response) {
     saveMemory();
 }
 
-// Replace the triggerGossipAboutContact function with this improved version:
+// Trigger gossip with close friends (fixed duplicate)
 function triggerGossipAboutContact(contactId, weirdInteraction) {
     const contactMemory = memoryData.contactMemory[contactId];
     if (!contactMemory) return;
@@ -309,78 +312,7 @@ function triggerGossipAboutContact(contactId, weirdInteraction) {
     saveMemory();
 }
 
-// Trigger gossip with close friends
-function triggerGossipAboutContact(contactId, weirdInteraction) {
-    const contactMemory = memoryData.contactMemory[contactId];
-    if (!contactMemory) return;
-    
-    const contactName = contactMemory.contactInfo.name;
-    
-    // Share with close friends only
-    for (const [friendId, friendMemory] of Object.entries(memoryData.contactMemory)) {
-        if (friendId !== contactId && friendMemory.interactionScore >= 50) {
-            const gossip = {
-                about: contactId,
-                aboutName: contactName,
-                interaction: weirdInteraction,
-                timestamp: Date.now(),
-                hasBeenShared: false
-            };
-            
-            // Ensure array exists
-            if (!friendMemory.gossipShared) friendMemory.gossipShared = [];
-            
-            // Check if already shared
-            const alreadyShared = friendMemory.gossipShared.some(g => 
-                g.about === contactId && g.interaction.message === weirdInteraction.message
-            );
-            
-            if (!alreadyShared) {
-                friendMemory.gossipShared.push(gossip);
-                console.log(`Gossip stored about ${contactName} with ${friendMemory.contactInfo.name}`);
-            }
-        }
-    }
-    
-    saveMemory();
-}
-
-// Add this function to index.js for debugging
-function debugGossipSystem() {
-    Logger.system('=== GOSSIP SYSTEM DEBUG ===');
-    
-    let totalGossip = 0;
-    let totalWeirdInteractions = 0;
-    
-    for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
-        Logger.debug(`Contact: ${contact.contactInfo.name} (${contactId})`);
-        
-        if (contact.weirdInteractions && contact.weirdInteractions.length > 0) {
-            totalWeirdInteractions += contact.weirdInteractions.length;
-            Logger.debug(`  Weird interactions: ${contact.weirdInteractions.length}`);
-            
-            contact.weirdInteractions.forEach((interaction, index) => {
-                Logger.debug(`    ${index + 1}: "${interaction.message}" (shared with: ${interaction.sharedWith.length} people)`);
-            });
-        }
-        
-        if (contact.gossipShared && contact.gossipShared.length > 0) {
-            totalGossip += contact.gossipShared.length;
-            Logger.debug(`  Gossip received: ${contact.gossipShared.length}`);
-            
-            contact.gossipShared.forEach((gossip, index) => {
-                Logger.debug(`    ${index + 1}: About ${gossip.aboutName} - "${gossip.interaction.message}" (shared: ${gossip.hasBeenShared})`);
-            });
-        }
-    }
-    
-    Logger.system(`Total weird interactions: ${totalWeirdInteractions}`);
-    Logger.system(`Total gossip entries: ${totalGossip}`);
-    Logger.system('=== END DEBUG ===');
-}
-
-// Call this function periodically, for example in the message event handler:
-// After processing a message, add:
+// Debug gossip system (fixed duplicate)
 function debugGossipSystem() {
     Logger.system('=== GOSSIP SYSTEM DEBUG ===');
     
@@ -526,6 +458,7 @@ async function processProactiveTasks(client) {
     }
 }
 
+// Fallback functions (removed duplicates)
 if (typeof updateBoredomLevels !== 'function') {
     function updateBoredomLevels(memoryData) {
         const twoHours = 2 * 60 * 60 * 1000;
@@ -602,9 +535,6 @@ if (typeof processProactiveTasks !== 'function') {
         try {
             let allJobs = [];
             
-            // Collect all jobs (simplified version without tasks.js)
-            // You can add more proactive tasks here as needed
-            
             // Execute all jobs
             for (const job of allJobs) {
                 if (job.decision) {
@@ -622,353 +552,150 @@ if (typeof processProactiveTasks !== 'function') {
     console.log('Using fallback processProactiveTasks function');
 }
 
+// Add this function before the HannahBot class
+async function shouldShowQRCode() {
+    Logger.system('=== CHECKING IF QR CODE IS NEEDED ===');
+    
+    // Step 1: Try to load session from Google Drive
+    Logger.system('Step 1: Checking Google Drive for session...');
+    const driveSessionRestored = await sessionManager.loadSessionFromDrive();
+    
+    if (driveSessionRestored && sessionManager.isSessionLoaded()) {
+        Logger.system('✓ Session found and loaded from Google Drive');
+        Logger.system('✓ QR code NOT needed');
+        Logger.system('=== QR CODE CHECK COMPLETE ===');
+        return false;
+    }
+    
+    Logger.system('✗ Session not found in Google Drive or failed to load');
+    
+    // Step 2: Check if local session exists
+    Logger.system('Step 2: Checking for local session...');
+    if (sessionManager.hasLocalSession()) {
+        Logger.system('✓ Local session found');
+        Logger.system('✓ QR code NOT needed');
+        Logger.system('=== QR CODE CHECK COMPLETE ===');
+        return false;
+    }
+    
+    Logger.system('✗ No local session found');
+    Logger.system('✓ QR code IS needed');
+    Logger.system('=== QR CODE CHECK COMPLETE ===');
+    return true;
+}
 
 class HannahBot {
     constructor() {
-        this.client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: "hannah-bot",
-                dataPath: "./.wwebjs_auth" // Ensure this matches the path in sessionManager.js
-            }),
-            puppeteer: { 
-                args: ['--no-sandbox', '--disable-setuid-sandbox'],
-                headless: true // Important for Render deployment
-            }
+        this.client = null;
+    }
+
+    async start() {
+        Logger.system('--- HANNAH BOT STARTING (Baileys) ---');
+        
+        // Fetch latest WhatsApp Web version
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        console.log(`using WA v${version.join('.')}, isLatest: ${isLatest}`);
+        
+        const restored = await sessionManager.loadSessionFromDrive();
+        if (!restored) {
+            Logger.error('❌ CRITICAL: Could not restore session from Google Drive.');
+            Logger.error('Please run `node generate-session.js` and upload the `sessions/creds.json` file first.');
+            process.exit(1);
+        }
+        
+        const { state, saveCreds } = await useMultiFileAuthState('sessions');
+        
+        this.client = makeWASocket({
+            logger: pino({ level: 'silent' }),
+            printQRInTerminal: false,
+            browser: Browsers.windows('Firefox'), // Now properly imported
+            auth: state,
+            version: version, // Use the fetched version
         });
+        
+        // This ensures that any changes to credentials (like a new login) are saved.
+        this.client.ev.on('creds.update', saveCreds);
+        
         this.setupEventListeners();
-        this.startPeriodicUpdates();
+        await loadMemory();
+        this.startPeriodicUpdates(); // Start your background tasks
     }
 
     setupEventListeners() {
-        // QR Code
-        this.client.on('qr', async (qr) => { 
-            qrcode.generate(qr, { small: true });
-            Logger.system('QR code generated, please scan with WhatsApp');
+        // Handle connection status
+        this.client.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect } = update;
+            if (connection === 'open') {
+                Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
+            } else if (connection === 'close') {
+                const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+                Logger.error(`Connection closed. Reason: ${lastDisconnect.error}. Reconnecting: ${shouldReconnect}`);
+                // The library handles reconnection automatically. We just log it.
+            }
         });
-        
-        // Update the 'ready' event:
-// Update the 'ready' event:
-this.client.on('ready', async () => { 
-    Logger.system('Hannah is ready! 🌟');
-    
-    // Load memory
-    await loadMemory(); 
-    
-});
 
-        
-        // Disconnected
-        this.client.on('disconnected', async (reason) => {
-            Logger.error('WhatsApp client disconnected', reason);
-            Logger.system('Attempting to restart...');
+        // Handle incoming messages
+        this.client.ev.on('messages.upsert', async (m) => {
+            const msg = m.messages[0];
+            if (!msg.message || msg.key.fromMe) return;
             
-            
-            // Restart the bot
-            setTimeout(() => {
-                this.client.initialize();
-            }, 5000);
-        });
-        
-        // Message handling
-this.client.on('message_create', async (message) => {
-    try {
-        if (message.fromMe) return;
-        
-        const contactId = message.from;
-        const messageBody = message.body;
-        
-        Logger.message(contactId, messageBody, '←');
-        
-        // Debug command to check gossip system
-        if (messageBody.toLowerCase().includes('debug gossip')) {
-            debugGossipSystem();
-            return; // Don't process this message further
-        }
-        
-        if (messageBody.toLowerCase().includes('test gossip')) {
-            testGossipSystem();
-            return;
-        }
-
-        // Test multi-message command
-        if (messageBody.toLowerCase().includes('test multi')) {
-            // Send a test multi-message response
-            await sendMultipleMessages(this.client, contactId, [
-                "this is a test",
-                "of multiple messages",
-                "being sent separately",
-                "just to see if it works"
-            ], userMemory.contactInfo.name);
-            return;
-        }
-
-        // Upload session command
-        if (messageBody.toLowerCase().includes('upload session')) {
-            Logger.system('Manual session upload requested');
-            
-            const success = await sessionManager.uploadSessionToDrive();
-            
-            if (success) {
-                await sendMultipleMessages(this.client, contactId, [
-                    "session uploaded to google drive",
-                    "you can now restart the bot",
-                    "and it should authenticate automatically"
-                ], userMemory.contactInfo.name);
-            } else {
-                await sendMultipleMessages(this.client, contactId, [
-                    "failed to upload session",
-                    "check the logs for errors"
-                ], userMemory.contactInfo.name);
+            try {
+                const contactId = msg.key.remoteJid;
+                
+                // Baileys provides different message object structures. This handles most text messages.
+                const messageBody = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+                
+                // Ignore empty messages
+                if (!messageBody) return;
+                
+                Logger.message(msg.pushName || contactId, messageBody, '←');
+                
+                // Initialize memory for new contacts. Baileys gives us `pushName`.
+                if (!memoryData.contactMemory[contactId]) {
+                    initializeUserMemory(contactId, { pushname: msg.pushName || "Unknown" });
+                }
+                
+                const userMemory = memoryData.contactMemory[contactId];
+                
+                // Get quoted message context
+                const quotedMessageText = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.conversation || null;
+                
+                const aiResponse = await getAiResponse(contactId, messageBody, memoryData, quotedMessageText);
+                
+                if (aiResponse) {
+                    await sendHannahsMessage(this.client, contactId, aiResponse, userMemory.contactInfo.name);
+                    updateConversationHistory(contactId, messageBody, aiResponse);
+                    extractAndStoreMemories(contactId, messageBody, aiResponse);
+                    updateFriendshipScore(contactId, 1, 'Positive interaction');
+                }
+            } catch (error) {
+                Logger.error(`Error in message handler: ${error.message}`, error.stack);
             }
-            
-            return;
-        }
-
-        // Save session command
-        if (messageBody.toLowerCase().includes('save session')) {
-            Logger.system('Manual session save requested');
-            
-            const success = await sessionManager.saveSessionToFile();
-            
-            if (success) {
-                await sendMultipleMessages(this.client, contactId, [
-                    "session saved to session.js file",
-                    "please upload this file to google drive",
-                    "in the same folder as hannah_memory.json"
-                ], userMemory.contactInfo.name);
-            } else {
-                await sendMultipleMessages(this.client, contactId, [
-                    "failed to save session",
-                    "check the logs for errors"
-                ], userMemory.contactInfo.name);
-            }
-            
-            return;
-        }
-
-        // Clear session command
-        if (messageBody.toLowerCase().includes('clear session')) {
-            Logger.system('Manual session clear requested');
-            
-            // Clear local session
-            sessionManager.clearLocalSession();
-            
-            await sendMultipleMessages(this.client, contactId, [
-                "local session cleared",
-                "restart the bot to re-authenticate"
-            ], userMemory.contactInfo.name);
-            
-            return;
-        }
-
-        // Set OAuth command
-        if (messageBody.toLowerCase().startsWith('set oauth ')) {
-            const code = messageBody.substring('set oauth '.length).trim();
-            Logger.system(`Setting OAuth2 token with code: ${code}`);
-            
-            const success = await sessionManager.setOAuth2Token(code);
-            
-            if (success) {
-                await sendMultipleMessages(this.client, contactId, [
-                    "oauth2 token set successfully",
-                    "you can now upload the session to google drive"
-                ], userMemory.contactInfo.name);
-            } else {
-                await sendMultipleMessages(this.client, contactId, [
-                    "failed to set oauth2 token",
-                    "please check the code and try again"
-                ], userMemory.contactInfo.name);
-            }
-            
-            return;
-        }
-
-        // Session info command
-        if (messageBody.toLowerCase().includes('session info')) {
-            Logger.system('Getting session file info...');
-            
-            const fileInfo = await sessionManager.getSessionFileInfo();
-            
-            if (fileInfo) {
-                await sendMultipleMessages(this.client, contactId, [
-                    `session file found: ${fileInfo.name}`,
-                    `created: ${new Date(fileInfo.createdTime).toLocaleString()}`,
-                    `modified: ${new Date(fileInfo.modifiedTime).toLocaleString()}`,
-                    `view link: ${fileInfo.webViewLink}`
-                ], userMemory.contactInfo.name);
-            } else {
-                await sendMultipleMessages(this.client, contactId, [
-                    "no session file found on google drive"
-                ], userMemory.contactInfo.name);
-            }
-            
-            return;
-        }
-        
-        // Get contact and initialize memory
-        const contact = await this.client.getContactById(contactId);
-        initializeUserMemory(contactId, contact);
-        const userMemory = memoryData.contactMemory[contactId];
-        
-        // Make assumptions if needed
-        if (!userMemory.assumptions || userMemory.assumptions.length === 0) {
-            await makeAssumptionsAboutContact(contactId, this.client);
-        }
-        
-        // Handle prayer time
-        if (memoryData.isPraying) {
-            if (!userMemory.missedDuringPrayer) userMemory.missedDuringPrayer = [];
-            userMemory.missedDuringPrayer.push(messageBody);
-            saveMemory();
-            Logger.debug(`Message stored during prayer time: ${messageBody}`);
-            return;
-        }
-        
-        // Handle reply tracking
-        if (userMemory.isAwaitingReply) {
-            userMemory.isAwaitingReply = false;
-            userMemory.hasFollowedUpOnGhosting = false;
-        }
-        
-        // Get quoted message context
-        const quotedMessage = message.hasQuotedMsg ? await message.getQuotedMessage() : null;
-        const quotedMessageText = quotedMessage ? quotedMessage.body : null;
-        
-        // Get AI response
-        const aiResponse = await getAiResponse(contactId, messageBody, memoryData, quotedMessageText);
-        
-        // Send response
-        if (aiResponse) {
-            await sendHannahsMessage(this.client, contactId, aiResponse, userMemory.contactInfo.name);
-            updateConversationHistory(contactId, messageBody, aiResponse);
-            extractAndStoreMemories(contactId, messageBody, aiResponse);
-            
-            // Update friendship score
-            const currentTier = getFriendshipTier(contactId);
-            let scoreIncrease = 1;
-            if (currentTier === 'stranger') scoreIncrease = 2;
-            else if (messageBody.length > 50) scoreIncrease = 2;
-            updateFriendshipScore(contactId, scoreIncrease, 'Positive interaction');
-        }
-    } catch (error) {
-        Logger.error('Error in message event handler', error.message);
-    }
-});
-        
-        // Error handling
-        this.client.on('auth_failure', () => { 
-            Logger.system('Authentication failed. Please scan QR code again.'); 
         });
     }
 
     startPeriodicUpdates() {
-        setInterval(async () => {
-            try {
-                // Add null checks before calling functions
-                if (typeof updateBoredomLevels === 'function') {
-                    updateBoredomLevels(memoryData);
-                } else {
-                    Logger.error('updateBoredomLevels is not available');
-                }
-                
-                if (typeof updateGlobalMood === 'function') {
-                    const moodChanged = updateGlobalMood(memoryData);
-                    if (moodChanged) saveMemory();
-                } else {
-                    Logger.error('updateGlobalMood is not available');
-                }
-                
-                if (typeof checkPrayerTimes === 'function') {
-                    checkPrayerTimes(this.client);
-                } else {
-                    Logger.error('checkPrayerTimes is not available');
-                }
-                
-                if (typeof processProactiveTasks === 'function') {
-                    await processProactiveTasks(this.client);
-                } else {
-                    Logger.error('processProactiveTasks is not available');
-                }
-            } catch (error) {
-                Logger.error('Error in periodic updates', error.message);
-            }
-        }, 5 * 60 * 1000); // Run every 5 minutes
-    }
-
-    async initialize() {
-    Logger.system('=== SESSION RESTORATION PROCESS ===');
-    
-    // Step 1: Try to load session from Google Drive
-    Logger.system('Step 1: Attempting to restore session from Google Drive...');
-    const driveSessionRestored = await sessionManager.loadSessionFromDrive();
-    
-    if (driveSessionRestored) {
-        Logger.system('✓ Session restored successfully from Google Drive');
-    } else {
-        Logger.system('✗ Session not found in Google Drive');
-        
-        // Step 2: Check if local session exists
-        Logger.system('Step 2: Checking for local session...');
-        if (sessionManager.hasLocalSession()) {
-            Logger.system('✓ Local session found');
-        } else {
-            Logger.system('✗ No local session found');
-            Logger.system('QR code will be required for authentication');
-        }
-    }
-    
-    Logger.system('=== END SESSION RESTORATION PROCESS ===');
-    
-    // Initialize the client
-    await this.client.initialize();
-}
-
-    start() {
-        Logger.system('Starting Hannah Bot...');
-        this.initialize().catch(error => {
-            Logger.error('Failed to initialize bot', error);
-        });
+        Logger.system('Starting periodic tasks (every 5 minutes)...');
+        setInterval(() => {
+            updateBoredomLevels(memoryData);
+            updateGlobalMood(memoryData);
+            checkPrayerTimes(this.client);
+            processProactiveTasks(this.client);
+        }, 5 * 60 * 1000);
     }
 }
 
-// Modify the bot initialization
 const hannah = new HannahBot();
 hannah.start();
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-    Logger.system('\nShutting down Hannah gracefully...');
-    try {
-        if (memoryData && memoryData.contactMemory) {
-            await saveMemory();
-        }
-    } catch (error) {
-        Logger.error('Error saving memory during shutdown', error.message);
-    }
-    
-    try {
-        await hannah.client.destroy();
-    } catch (error) {
-        Logger.error('Error destroying client during shutdown', error.message);
-    }
-    
+    Logger.system('\nShutting down gracefully...');
+    await saveMemory(); // Just save the memory state
     process.exit(0);
 });
 
-process.on('exit', async () => {
-    try {
-        if (memoryData && memoryData.contactMemory) {
-            await saveMemory();
-        }
-    } catch (error) {
-        // Can't use Logger here since we're exiting
-        console.error('Error saving memory during exit:', error.message);
-    }
-    
-    try {
-
-    } catch (error) {
-        // Can't use Logger here since we're exiting
-        console.error('Error saving session during exit:', error.message);
-    }
+process.on('uncaughtException', (err) => {
+    Logger.error('Uncaught Exception:', err.message);
+    // Depending on the error, you might want to restart or just log
 });
