@@ -596,10 +596,11 @@ class HannahBot {
         const { version, isLatest } = await fetchLatestBaileysVersion();
         console.log(`using WA v${version.join('.')}, isLatest: ${isLatest}`);
         
-        const restored = await sessionManager.loadSessionFromDrive();
-        if (!restored) {
-            Logger.error('❌ CRITICAL: Could not restore session from Google Drive.');
-            Logger.error('Please run `node generate-session.js` and upload the `sessions/creds.json` file first.');
+        // Load session from environment variable or local file
+        const sessionLoaded = await sessionManager.loadSession();
+        if (!sessionLoaded) {
+            Logger.error('❌ CRITICAL: Could not load session.');
+            Logger.error('Please set SESSION_CREDS_BASE64 environment variable with your session data.');
             process.exit(1);
         }
         
@@ -608,17 +609,15 @@ class HannahBot {
         this.client = makeWASocket({
             logger: pino({ level: 'silent' }),
             printQRInTerminal: false,
-            browser: Browsers.windows('Firefox'), // Now properly imported
+            browser: Browsers.windows('Firefox'),
             auth: state,
-            version: version, // Use the fetched version
+            version: version,
         });
         
-        // This ensures that any changes to credentials (like a new login) are saved.
         this.client.ev.on('creds.update', saveCreds);
-        
         this.setupEventListeners();
         await loadMemory();
-        this.startPeriodicUpdates(); // Start your background tasks
+        this.startPeriodicUpdates();
     }
 
     setupEventListeners() {

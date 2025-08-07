@@ -1,14 +1,29 @@
-// sessionManager.js (Baileys Version - Updated)
+// sessionManager.js (Updated for Render Free Tier)
 const fs = require('fs-extra');
 const path = require('path');
 const Logger = require('./logger.js');
 
 // Google Drive Setup
 const { google } = require('googleapis');
-const auth = new google.auth.GoogleAuth({
-    keyFile: path.join(__dirname, 'credentials.json'),
-    scopes: 'https://www.googleapis.com/auth/drive',
-});
+let auth;
+
+// Check if we have credentials as environment variable
+if (process.env.GOOGLE_CREDENTIALS_BASE64) {
+    try {
+        // Decode base64 credentials
+        const credentialsJson = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString();
+        const credentials = JSON.parse(credentialsJson);
+        auth = new google.auth.GoogleAuth({
+            credentials: credentials,
+            scopes: 'https://www.googleapis.com/auth/drive',
+        });
+        Logger.system('✓ Google Drive credentials loaded from environment variable');
+    } catch (error) {
+        Logger.error('Failed to parse Google Drive credentials from environment variable:', error.message);
+    }
+} else {
+    Logger.error('Google Drive credentials not found in environment variables');
+}
 
 const drive = google.drive({ version: 'v3', auth });
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -31,15 +46,55 @@ class SessionManager {
         return this.isSessionLoaded;
     }
 
+    // Load session from environment variable or file
+    async loadSession() {
+        try {
+            // First try to load from environment variable (for Render)
+            if (process.env.SESSION_CREDS_BASE64) {
+                Logger.system('Loading session from environment variable...');
+                
+                // Ensure the sessions directory exists
+                fs.ensureDirSync(this.sessionPath);
+                
+                // Decode and save the session
+                const sessionJson = Buffer.from(process.env.SESSION_CREDS_BASE64, 'base64').toString();
+                fs.writeFileSync(this.sessionFilePath, sessionJson);
+                
+                Logger.success('✓ Session loaded from environment variable!');
+                this.isSessionLoaded = true;
+                return true;
+            }
+            
+            // Fall back to local file
+            if (this.hasLocalSession()) {
+                Logger.system('Loading session from local file...');
+                this.isSessionLoaded = true;
+                return true;
+            }
+            
+            Logger.error('No session found in environment variable or local file');
+            return false;
+        } catch (error) {
+            Logger.error('Error loading session:', error.message);
+            return false;
+        }
+    }
+
     // Downloads creds.json from Google Drive
     async loadSessionFromDrive() {
         try {
-            Logger.system('Attempting to load session from Google Drive...');
+            // Check if we have Google Drive credentials
+            if (!auth) {
+                Logger.error('Google Drive credentials not configured.');
+                return false;
+            }
             
             if (!GOOGLE_DRIVE_FOLDER_ID) {
                 Logger.error('Google Drive Folder ID not configured in environment variables.');
                 return false;
             }
+            
+            Logger.system('Attempting to load session from Google Drive...');
             
             const listRes = await drive.files.list({
                 q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name='${SESSION_FILE_NAME}' and trashed=false`,
@@ -79,6 +134,12 @@ class SessionManager {
     // Uploads creds.json to Google Drive
     async saveSessionToDrive() {
         try {
+            // Check if we have Google Drive credentials
+            if (!auth) {
+                Logger.error('Google Drive credentials not configured.');
+                return false;
+            }
+            
             if (!GOOGLE_DRIVE_FOLDER_ID) {
                 Logger.error('Google Drive Folder ID not configured in environment variables.');
                 return false;
@@ -146,61 +207,13 @@ class SessionManager {
         }
     }
 
-    // Delete session from Google Drive
-    async deleteSessionFromDrive() {
-        try {
-            if (!GOOGLE_DRIVE_FOLDER_ID) {
-                Logger.error('Google Drive Folder ID not configured in environment variables.');
-                return false;
-            }
-            
-            Logger.system('Deleting session from Google Drive...');
-            
-            const listRes = await drive.files.list({
-                q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name='${SESSION_FILE_NAME}' and trashed=false`,
-                fields: 'files(id)',
-                pageSize: 1,
-            });
-            
-            if (!listRes.data.files || listRes.data.files.length === 0) {
-                Logger.system('No session file found on Google Drive.');
-                return true; // Nothing to delete
-            }
-            
-            const fileId = listRes.data.files[0].id;
-            await drive.files.delete({ fileId: fileId });
-            
-            Logger.success('✓ Session successfully deleted from Google Drive!');
-            return true;
-        } catch (error) {
-            Logger.error('Error deleting session from Google Drive', error.message);
-            return false;
-        }
-    }
-
-    // Delete local session
-    deleteLocalSession() {
-        try {
-            if (this.hasLocalSession()) {
-                fs.removeSync(this.sessionPath);
-                Logger.success('✓ Local session successfully deleted!');
-                this.isSessionLoaded = false;
-                return true;
-            }
-            return false;
-        } catch (error) {
-            Logger.error('Error deleting local session', error.message);
-            return false;
-        }
-    }
-
     // Get session info
     async getSessionInfo() {
         try {
             const localExists = this.hasLocalSession();
             let driveInfo = null;
             
-            if (GOOGLE_DRIVE_FOLDER_ID) {
+            if (GOOGLE_DRIVE_FOLDER_ID && auth) {
                 try {
                     const listRes = await drive.files.list({
                         q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name='${SESSION_FILE_NAME}' and trashed=false`,
