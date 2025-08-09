@@ -1,30 +1,31 @@
-// drive.js (Updated)
-const { google } = require('googleapis');
+// drive.js (OAuth Version)
 const fs = require('fs');
-const path = require('path');
+const { google } = require('googleapis');
 const Logger = require('./logger.js');
 
-// Google Drive Setup
+// Google Drive OAuth Setup
 let auth;
-if (process.env.GOOGLE_CREDENTIALS_BASE64) {
+if (process.env.GOOGLE_OAUTH_TOKEN_BASE64 && process.env.GOOGLE_OAUTH_CREDS_BASE64) {
     try {
-        const credentialsJson = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString();
+        // Decode base64 token
+        const tokenJson = Buffer.from(process.env.GOOGLE_OAUTH_TOKEN_BASE64, 'base64').toString();
+        const tokens = JSON.parse(tokenJson);
+        
+        // Decode base64 OAuth credentials
+        const credentialsJson = Buffer.from(process.env.GOOGLE_OAUTH_CREDS_BASE64, 'base64').toString();
         const credentials = JSON.parse(credentialsJson);
-        auth = new google.auth.GoogleAuth({
-            credentials: credentials,
-            scopes: 'https://www.googleapis.com/auth/drive',
-        });
+        
+        const { client_id, client_secret, redirect_uris } = credentials.installed;
+        
+        auth = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+        auth.setCredentials(tokens);
+        
+        Logger.system('✓ Google Drive OAuth credentials loaded from environment variable');
     } catch (error) {
-        Logger.error('Failed to parse Google Drive credentials from environment variable:', error.message);
+        Logger.error('Failed to parse Google OAuth credentials from environment variable:', error.message);
     }
 } else {
-    const credentialsPath = path.join(__dirname, 'credentials.json');
-    if (fs.existsSync(credentialsPath)) {
-        auth = new google.auth.GoogleAuth({
-            keyFile: credentialsPath,
-            scopes: 'https://www.googleapis.com/auth/drive',
-        });
-    }
+    Logger.error('Google OAuth credentials not found in environment variables');
 }
 
 const drive = google.drive({ version: 'v3', auth });
@@ -38,7 +39,7 @@ let memoryFileId = null;
 async function loadMemoryFromDrive() {
     try {
         if (!auth) {
-            Logger.error('Google Drive credentials not configured.');
+            Logger.error('Google Drive OAuth not configured.');
             return null;
         }
         
@@ -81,7 +82,7 @@ async function loadMemoryFromDrive() {
 async function saveMemoryToDrive(memoryData) {
     try {
         if (!auth) {
-            Logger.error('Google Drive credentials not configured.');
+            Logger.error('Google Drive OAuth not configured.');
             return false;
         }
         
@@ -133,7 +134,7 @@ async function saveMemoryToDrive(memoryData) {
 async function createMemoryFileOnDrive(memoryData) {
     try {
         if (!auth) {
-            Logger.error('Google Drive credentials not configured.');
+            Logger.error('Google Drive OAuth not configured.');
             return null;
         }
         

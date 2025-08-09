@@ -1,17 +1,79 @@
-require('dotenv').config();
+// generate-token-simple.js
+const fs = require('fs');
+const path = require('path');
+const { google } = require('googleapis');
+const open = require('open');
 const http = require('http');
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason,
-    Browsers,
-    fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore
-} = require('@whiskeysockets/baileys');
-const pino = require('pino');
-const Logger = require('./logger.js');
-const SessionManager = require('./sessionManager');
-const sessionManager = new SessionManager();
+const url = require('url');
+
+const SCOPES = ['https://www.googleapis.com/auth/drive'];
+const TOKEN_PATH = path.join(__dirname, 'token.json');
+const CREDENTIALS_PATH = path.join(__dirname, 'oauth-credentials.json');
+
+async function main() {
+    try {
+        // Load client secrets from a local file
+        const content = fs.readFileSync(CREDENTIALS_PATH);
+        const credentials = JSON.parse(content);
+        
+        const { client_secret, client_id, redirect_uris } = credentials.installed;
+        const oAuth2Client = new google.auth.OAuth2(
+            client_id, client_secret, redirect_uris[0]
+        );
+
+        // Generate authorization URL
+        const authUrl = oAuth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: SCOPES,
+        });
+        
+        console.log('Authorize this app by visiting this url:', authUrl);
+        open(authUrl);
+
+        // Create a simple server to handle the OAuth callback
+        const server = http.createServer(async (req, res) => {
+            try {
+                if (req.url.includes('/oauth2callback')) {
+                    const qs = new url.URL(req.url, 'http://localhost:3000').searchParams;
+                    const code = qs.get('code');
+                    
+                    console.log('Authorization code received:', code);
+
+                    res.end('<h1>Authentication successful! You can close this window.</h1>');
+                    
+                    // Get tokens
+                    const { tokens } = await oAuth2Client.getToken(code);
+                    
+                    // Store the token to disk
+                    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+                    console.log('Token stored to', TOKEN_PATH);
+                    
+                    // Convert token to base64 for Render
+                    const tokenBase64 = Buffer.from(JSON.stringify(tokens)).toString('base64');
+                    console.log('\n=== TOKEN FOR RENDER ===');
+                    console.log('GOOGLE_OAUTH_TOKEN_BASE64=' + tokenBase64);
+                    console.log('========================\n');
+                    
+                    console.log('Add this environment variable to your Render service');
+                    
+                    // Close the server
+                    server.close();
+                }
+            } catch (e) {
+                console.error('Error handling OAuth callback:', e);
+                res.end('<h1>Error during authentication</h1>');
+            }
+        });
+
+        server.listen(3000, () => {
+            console.log('Listening on port 3000 for OAuth callback');
+        });
+    } catch (error) {
+        console.error('Error in main function:', error);
+    }
+}
+
+main();
 
 // Import modules
 const { hannahProfile, getAiResponse, sendHannahsMessage } = require('./hannah.js'); 
