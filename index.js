@@ -1,80 +1,18 @@
-// generate-token-simple.js
-const fs = require('fs');
-const path = require('path');
-const { google } = require('googleapis');
-const open = require('open');
+// index.js (Fixed for Render)
+require('dotenv').config();
 const http = require('http');
-const url = require('url');
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason,
+    Browsers,
+    fetchLatestBaileysVersion, // Added this import
+    makeCacheableSignalKeyStore
+} = require('@whiskeysockets/baileys');
+const pino = require('pino');
 const Logger = require('./logger.js');
-
-const SCOPES = ['https://www.googleapis.com/auth/drive'];
-const TOKEN_PATH = path.join(__dirname, 'token.json');
-const CREDENTIALS_PATH = path.join(__dirname, 'oauth-credentials.json');
-
-async function main() {
-    try {
-        // Load client secrets from a local file
-        const content = fs.readFileSync(CREDENTIALS_PATH);
-        const credentials = JSON.parse(content);
-        
-        const { client_secret, client_id, redirect_uris } = credentials.installed;
-        const oAuth2Client = new google.auth.OAuth2(
-            client_id, client_secret, redirect_uris[0]
-        );
-
-        // Generate authorization URL
-        const authUrl = oAuth2Client.generateAuthUrl({
-            access_type: 'offline',
-            scope: SCOPES,
-        });
-        
-        console.log('Authorize this app by visiting this url:', authUrl);
-        open(authUrl);
-
-        // Create a simple server to handle the OAuth callback
-        const server = http.createServer(async (req, res) => {
-            try {
-                if (req.url.includes('/oauth2callback')) {
-                    const qs = new url.URL(req.url, 'http://localhost:3000').searchParams;
-                    const code = qs.get('code');
-                    
-                    console.log('Authorization code received:', code);
-
-                    res.end('<h1>Authentication successful! You can close this window.</h1>');
-                    
-                    // Get tokens
-                    const { tokens } = await oAuth2Client.getToken(code);
-                    
-                    // Store the token to disk
-                    fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
-                    console.log('Token stored to', TOKEN_PATH);
-                    
-                    // Convert token to base64 for Render
-                    const tokenBase64 = Buffer.from(JSON.stringify(tokens)).toString('base64');
-                    console.log('\n=== TOKEN FOR RENDER ===');
-                    console.log('GOOGLE_OAUTH_TOKEN_BASE64=' + tokenBase64);
-                    console.log('========================\n');
-                    
-                    console.log('Add this environment variable to your Render service');
-                    
-                    // Close the server
-                    server.close();
-                }
-            } catch (e) {
-                console.error('Error handling OAuth callback:', e);
-                res.end('<h1>Error during authentication</h1>');
-            }
-        });
-
-        server.listen(3000, () => {
-            console.log('Listening on port 3000 for OAuth callback');
-        });
-    } catch (error) {
-        console.error('Error in main function:', error);
-    }
-}
-
-main();
+const SessionManager = require('./sessionManager');
+const sessionManager = new SessionManager();
 
 // Import modules
 const { hannahProfile, getAiResponse, sendHannahsMessage } = require('./hannah.js'); 
@@ -118,7 +56,7 @@ const server = http.createServer((req, res) => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    Logger.system(`HTTP server listening on port ${PORT} for health checks`);
+    console.log(`HTTP server listening on port ${PORT} for health checks`);
 });
 
 // Load memory from Google Drive
@@ -208,50 +146,6 @@ async function rateLimit() {
     }
     
     lastApiCall = Date.now();
-}
-
-// Test gossip system
-function testGossipSystem() {
-    Logger.system('=== TESTING GOSSIP SYSTEM ===');
-    
-    let weirdInteractionsFound = false;
-    for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
-        if (contact.weirdInteractions && contact.weirdInteractions.length > 0) {
-            weirdInteractionsFound = true;
-            Logger.system(`Found weird interactions from ${contact.contactInfo.name}: ${contact.weirdInteractions.length}`);
-            
-            contact.weirdInteractions.forEach((interaction, index) => {
-                Logger.system(`  ${index + 1}: "${interaction.message}"`);
-            });
-        }
-    }
-    
-    if (!weirdInteractionsFound) {
-        Logger.system('No weird interactions found. Creating test data...');
-        
-        const testContactId = 'test123@c.us';
-        if (!memoryData.contactMemory[testContactId]) {
-            memoryData.contactMemory[testContactId] = {
-                contactInfo: { name: 'TestUser' },
-                weirdInteractions: [],
-                interactionScore: 0
-            };
-        }
-        
-        memoryData.contactMemory[testContactId].weirdInteractions.push({
-            keyword: 'i like you',
-            message: 'hey i like you wanna date',
-            timestamp: Date.now(),
-            sharedWith: []
-        });
-        
-        triggerGossipAboutContact(testContactId, memoryData.contactMemory[testContactId].weirdInteractions[0]);
-        
-        Logger.system('Test weird interaction created and gossip triggered');
-    }
-    
-    Logger.system('=== END TEST ===');
-    saveMemory();
 }
 
 // Update friendship score
@@ -354,7 +248,7 @@ function extractAndStoreMemories(contactId, message, response) {
     saveMemory();
 }
 
-// Trigger gossip with close friends (fixed duplicate)
+// Trigger gossip with close friends
 function triggerGossipAboutContact(contactId, weirdInteraction) {
     const contactMemory = memoryData.contactMemory[contactId];
     if (!contactMemory) return;
@@ -395,40 +289,6 @@ function triggerGossipAboutContact(contactId, weirdInteraction) {
     saveMemory();
 }
 
-// Debug gossip system (fixed duplicate)
-function debugGossipSystem() {
-    Logger.system('=== GOSSIP SYSTEM DEBUG ===');
-    
-    let totalGossip = 0;
-    let totalWeirdInteractions = 0;
-    
-    for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
-        Logger.debug(`Contact: ${contact.contactInfo.name} (${contactId})`);
-        
-        if (contact.weirdInteractions && contact.weirdInteractions.length > 0) {
-            totalWeirdInteractions += contact.weirdInteractions.length;
-            Logger.debug(`  Weird interactions: ${contact.weirdInteractions.length}`);
-            
-            contact.weirdInteractions.forEach((interaction, index) => {
-                Logger.debug(`    ${index + 1}: "${interaction.message}" (shared with: ${interaction.sharedWith.length} people)`);
-            });
-        }
-        
-        if (contact.gossipShared && contact.gossipShared.length > 0) {
-            totalGossip += contact.gossipShared.length;
-            Logger.debug(`  Gossip received: ${contact.gossipShared.length}`);
-            
-            contact.gossipShared.forEach((gossip, index) => {
-                Logger.debug(`    ${index + 1}: About ${gossip.aboutName} - "${gossip.interaction.message}" (shared: ${gossip.hasBeenShared})`);
-            });
-        }
-    }
-    
-    Logger.system(`Total weird interactions: ${totalWeirdInteractions}`);
-    Logger.system(`Total gossip entries: ${totalGossip}`);
-    Logger.system('=== END DEBUG ===');
-}
-
 // Get friendship tier
 function getFriendshipTier(contactId) {
     const userMemory = memoryData.contactMemory[contactId];
@@ -443,73 +303,6 @@ function getFriendshipTier(contactId) {
     }
     
     return 'stranger';
-}
-
-// Make assumptions about contact with better error handling
-async function makeAssumptionsAboutContact(contactId, client) {
-    try {
-        // Initialize memory if needed
-        if (!memoryData.contactMemory[contactId]) {
-            const contact = await client.getContactById(contactId);
-            initializeUserMemory(contactId, contact);
-        }
-        
-        const userMemory = memoryData.contactMemory[contactId];
-        if (!userMemory) return;
-        
-        // Ensure contact info exists
-        if (!userMemory.contactInfo) {
-            userMemory.contactInfo = { name: "Unknown", profilePicUrl: null, bio: null, lastUpdated: Date.now() };
-        }
-        
-        // Get contact info
-        const contact = await client.getContactById(contactId);
-        if (contact.name || contact.pushname) {
-            userMemory.contactInfo.name = contact.name || contact.pushname;
-        }
-        userMemory.contactInfo.lastUpdated = Date.now();
-        
-        // Get profile picture
-        try {
-            userMemory.contactInfo.profilePicUrl = await contact.getProfilePicUrl();
-        } catch (error) {
-            console.log(`No profile pic for ${contactId}`);
-        }
-        
-        // Make assumptions based on available info
-        const assumptions = [];
-        const name = userMemory.contactInfo.name.toLowerCase();
-        
-        // Name-based assumptions
-        if (name.includes('ahmad') || name.includes('muhammad') || name.includes('ali')) {
-            assumptions.push("probably a muslim guy");
-        }
-        if (name.includes('girl') || name.includes('baby') || name.includes('princess')) {
-            assumptions.push("cringey name alert");
-        }
-        if (name.includes('king') || name.includes('boss') || name.includes('lord')) {
-            assumptions.push("thinks he's cool");
-        }
-        if (contactId.includes('60')) {
-            assumptions.push("malaysian number");
-        }
-        
-        // Random assumptions
-        const randomAssumptions = [
-            "probably uses tiktok too much", "definitely watches anime", "might be a gamer", 
-            "probably has weird music taste", "could be a cat person", "might be introverted"
-        ];
-        
-        if (Math.random() > 0.7 && assumptions.length < 3) {
-            assumptions.push(randomAssumptions[Math.floor(Math.random() * randomAssumptions.length)]);
-        }
-        
-        userMemory.assumptions = assumptions;
-        console.log(`Made assumptions about ${userMemory.contactInfo.name}: ${assumptions.join(', ')}`);
-        saveMemory();
-    } catch (error) {
-        console.error('Error making assumptions:', error);
-    }
 }
 
 // Process proactive tasks
@@ -537,11 +330,11 @@ async function processProactiveTasks(client) {
         
         if (allJobs.length > 0) saveMemory();
     } catch (error) {
-        console.error('Error processing proactive tasks:', error);
+        Logger.error('Error processing proactive tasks:', error.message);
     }
 }
 
-// Fallback functions (removed duplicates)
+// Fallback functions
 if (typeof updateBoredomLevels !== 'function') {
     function updateBoredomLevels(memoryData) {
         const twoHours = 2 * 60 * 60 * 1000;
@@ -613,73 +406,18 @@ if (typeof checkPrayerTimes !== 'function') {
     console.log('Using fallback checkPrayerTimes function');
 }
 
-if (typeof processProactiveTasks !== 'function') {
-    async function processProactiveTasks(client) {
-        try {
-            let allJobs = [];
-            
-            // Execute all jobs
-            for (const job of allJobs) {
-                if (job.decision) {
-                    await sendHannahsMessage(client, job.userData.chatId, job.decision, job.userName);
-                    job.userData.lastMessageTimestamp = Date.now();
-                    job.userData.boredomLevel = 0;
-                }
-            }
-            
-            if (allJobs.length > 0) saveMemory();
-        } catch (error) {
-            Logger.error('Error processing proactive tasks', error.message);
-        }
-    }
-    console.log('Using fallback processProactiveTasks function');
-}
-
-// Add this function before the HannahBot class
-async function shouldShowQRCode() {
-    Logger.system('=== CHECKING IF QR CODE IS NEEDED ===');
-    
-    // Step 1: Try to load session from Google Drive
-    Logger.system('Step 1: Checking Google Drive for session...');
-    const driveSessionRestored = await sessionManager.loadSessionFromDrive();
-    
-    if (driveSessionRestored && sessionManager.isSessionLoaded()) {
-        Logger.system('✓ Session found and loaded from Google Drive');
-        Logger.system('✓ QR code NOT needed');
-        Logger.system('=== QR CODE CHECK COMPLETE ===');
-        return false;
-    }
-    
-    Logger.system('✗ Session not found in Google Drive or failed to load');
-    
-    // Step 2: Check if local session exists
-    Logger.system('Step 2: Checking for local session...');
-    if (sessionManager.hasLocalSession()) {
-        Logger.system('✓ Local session found');
-        Logger.system('✓ QR code NOT needed');
-        Logger.system('=== QR CODE CHECK COMPLETE ===');
-        return false;
-    }
-    
-    Logger.system('✗ No local session found');
-    Logger.system('✓ QR code IS needed');
-    Logger.system('=== QR CODE CHECK COMPLETE ===');
-    return true;
-}
-
 class HannahBot {
     constructor() {
         this.client = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
-        this.lastDecryptionError = 0;
-        this.decyptionErrorCount = 0;
     }
 
     async start() {
         try {
             Logger.system('--- HANNAH BOT STARTING (Baileys) ---');
             
+            // Fetch latest WhatsApp Web version
             const { version, isLatest } = await fetchLatestBaileysVersion();
             console.log(`using WA v${version.join('.')}, isLatest: ${isLatest}`);
             
@@ -724,7 +462,6 @@ class HannahBot {
             if (connection === 'open') {
                 Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
                 this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-                this.decyptionErrorCount = 0; // Reset decryption error count
             } else if (connection === 'close') {
                 const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
                 Logger.error(`Connection closed. Reason: ${lastDisconnect?.error?.message || 'Unknown'}. Reconnecting: ${shouldReconnect}`);
@@ -777,19 +514,6 @@ class HannahBot {
                 Logger.error(`Error in message handler: ${error.message}`);
             }
         });
-
-        // Handle decryption errors
-        this.client.ev.on('messages.app-state', (key) => {
-            // This event can help detect session issues
-            Logger.debug(`Message app state: ${key}`);
-        });
-
-        // Handle group updates
-        this.client.ev.on('groups.update', (updates) => {
-            for (const update of updates) {
-                Logger.debug(`Group update: ${update.id} ${update.subject || ''}`);
-            }
-        });
     }
 
     startPeriodicUpdates() {
@@ -800,13 +524,6 @@ class HannahBot {
                 updateGlobalMood(memoryData);
                 checkPrayerTimes(this.client);
                 processProactiveTasks(this.client);
-                
-                // Check for too many decryption errors
-                const now = Date.now();
-                if (this.decyptionErrorCount > 10 && (now - this.lastDecryptionError) < 60000) {
-                    Logger.error('Too many decryption errors detected. Restarting...');
-                    process.exit(1);
-                }
             } catch (error) {
                 Logger.error('Error in periodic tasks:', error.message);
             }
@@ -814,39 +531,13 @@ class HannahBot {
     }
 }
 
-setInterval(() => {
-    if (this.decyptionErrorCount > 5) {
-        Logger.error('Too many decryption errors. Session may be corrupted.');
-        // You could automatically restart here or send a notification
-    }
-}, 60 * 60 * 1000);
-
-// Handle decryption errors globally
-process.on('uncaughtException', (error) => {
-    if (error.message.includes('Bad MAC')) {
-        Logger.error('Decryption error detected (Bad MAC)');
-        // Increment counter
-        // This will be handled in the periodic updates
-    } else {
-        Logger.error('Uncaught Exception:', error.message);
-    }
-});
-
-const hannah = new HannahBot();
-hannah.start().catch(error => {
-    Logger.error('Failed to start bot:', error.message);
-    process.exit(1);
-});
-
 // Improved error handling for the entire process
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    // Don't exit the process, just log the error
 });
 
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error.message);
-    // Don't exit the process, just log the error
 });
 
 // Graceful shutdown
@@ -862,4 +553,11 @@ process.on('SIGINT', async () => {
         console.error('Error during shutdown:', error.message);
         process.exit(0);
     }
+});
+
+// Start the bot
+const hannah = new HannahBot();
+hannah.start().catch(error => {
+    console.error('Failed to start bot:', error.message);
+    process.exit(1);
 });
