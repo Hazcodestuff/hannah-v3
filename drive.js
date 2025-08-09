@@ -1,33 +1,12 @@
-// drive.js (Updated for Render)
+// drive.js (Updated)
 const { google } = require('googleapis');
 const Logger = require('./logger.js');
+const { initializeOAuth, getAuth, isAuthConfigured } = require('./oauth.js');
 
-// Google Drive OAuth Setup
-let auth;
-if (process.env.GOOGLE_OAUTH_TOKEN_BASE64 && process.env.GOOGLE_OAUTH_CREDS_BASE64) {
-    try {
-        // Decode base64 token
-        const tokenJson = Buffer.from(process.env.GOOGLE_OAUTH_TOKEN_BASE64, 'base64').toString();
-        const tokens = JSON.parse(tokenJson);
-        
-        // Decode base64 OAuth credentials
-        const credentialsJson = Buffer.from(process.env.GOOGLE_OAUTH_CREDS_BASE64, 'base64').toString();
-        const credentials = JSON.parse(credentialsJson);
-        
-        const { client_id, client_secret, redirect_uris } = credentials.installed;
-        
-        auth = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-        auth.setCredentials(tokens);
-        
-        Logger.system('✓ Google Drive OAuth credentials loaded from environment variable');
-    } catch (error) {
-        Logger.error('Failed to parse Google OAuth credentials from environment variable:', error.message);
-    }
-} else {
-    Logger.error('Google OAuth credentials not found in environment variables');
-}
+// Initialize OAuth
+initializeOAuth();
 
-const drive = google.drive({ version: 'v3', auth });
+const drive = google.drive({ version: 'v3', auth: getAuth() });
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
 const MEMORY_FILE_NAME = 'memory.json';
 
@@ -37,7 +16,7 @@ let memoryFileId = null;
 // Load memory from Google Drive
 async function loadMemoryFromDrive() {
     try {
-        if (!auth) {
+        if (!isAuthConfigured()) {
             Logger.error('Google Drive OAuth not configured.');
             return null;
         }
@@ -80,7 +59,7 @@ async function loadMemoryFromDrive() {
 // Save memory to Google Drive
 async function saveMemoryToDrive(memoryData) {
     try {
-        if (!auth) {
+        if (!isAuthConfigured()) {
             Logger.error('Google Drive OAuth not configured.');
             return false;
         }
@@ -132,7 +111,7 @@ async function saveMemoryToDrive(memoryData) {
 // Create memory file on Google Drive
 async function createMemoryFileOnDrive(memoryData) {
     try {
-        if (!auth) {
+        if (!isAuthConfigured()) {
             Logger.error('Google Drive OAuth not configured.');
             return null;
         }

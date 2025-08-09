@@ -431,17 +431,18 @@ class HannahBot {
             
             const { state, saveCreds } = await useMultiFileAuthState('sessions');
             
-            this.client = makeWASocket({
-                logger: pino({ level: 'silent' }),
-                printQRInTerminal: false,
-                browser: Browsers.windows('Firefox'),
-                auth: state,
-                version: version,
-                // Add message retry configuration
-                getMessage: async (key) => {
-                    return { conversation: "retry" };
-                },
-            });
+            // Update the makeWASocket configuration in index.js
+this.client = makeWASocket({
+    logger: pino({ level: 'silent' }),
+    printQRInTerminal: false,
+    browser: Browsers.ubuntu('Chrome'), // Use a different browser/OS combination
+    auth: state,
+    version: version,
+    // Add message retry configuration
+    getMessage: async (key) => {
+        return { conversation: "retry" };
+    },
+});
             
             this.client.ev.on('creds.update', saveCreds);
             this.setupEventListeners();
@@ -457,30 +458,34 @@ class HannahBot {
     
     setupEventListeners() {
         // Handle connection status
-        this.client.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect } = update;
-            if (connection === 'open') {
-                Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
-                this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-            } else if (connection === 'close') {
-                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                Logger.error(`Connection closed. Reason: ${lastDisconnect?.error?.message || 'Unknown'}. Reconnecting: ${shouldReconnect}`);
-                
-                if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
-                    this.reconnectAttempts++;
-                    Logger.system(`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-                    setTimeout(() => {
-                        this.start();
-                    }, 5000 * this.reconnectAttempts); // Exponential backoff
-                } else if (!shouldReconnect) {
-                    Logger.error('Logged out. Please generate a new session.');
-                    process.exit(1);
-                } else {
-                    Logger.error('Max reconnect attempts reached. Exiting.');
-                    process.exit(1);
-                }
-            }
-        });
+        // Update the connection.update handler in index.js
+this.client.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect } = update;
+    if (connection === 'open') {
+        Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
+        this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+    } else if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        
+        Logger.error(`Connection closed. Reason: ${lastDisconnect?.error?.message || 'Unknown'}. Status code: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+        
+        if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Exponential backoff with max 30s
+            Logger.system(`Reconnecting in ${delay/1000} seconds... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+            setTimeout(() => {
+                this.start();
+            }, delay);
+        } else if (!shouldReconnect) {
+            Logger.error('Logged out. Please generate a new session.');
+            process.exit(1);
+        } else {
+            Logger.error('Max reconnect attempts reached. Exiting.');
+            process.exit(1);
+        }
+    }
+});
 
         // Handle incoming messages
         this.client.ev.on('messages.upsert', async (m) => {
