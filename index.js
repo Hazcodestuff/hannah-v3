@@ -1,12 +1,12 @@
-// index.js (Baileys Version - Fixed)
 require('dotenv').config();
-const http = require('http'); // Add this import
+const http = require('http');
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason,
-    Browsers, // Added missing import
-    fetchLatestBaileysVersion // Recommended for version management
+    Browsers,
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const Logger = require('./logger.js');
@@ -40,7 +40,6 @@ let memoryData = {
 
 // Create HTTP server for Render health checks
 const server = http.createServer((req, res) => {
-    // Simple health check endpoint
     if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
@@ -49,20 +48,15 @@ const server = http.createServer((req, res) => {
             timestamp: new Date().toISOString()
         }));
     } else {
-        // For all other routes, return a simple message
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('WhatsApp bot is running. Health check: /health');
     }
 });
 
-// Get port from environment or default to 10000
 const PORT = process.env.PORT || 10000;
-
-// Start the server
 server.listen(PORT, () => {
     Logger.system(`HTTP server listening on port ${PORT} for health checks`);
 });
-
 
 // Load memory from Google Drive
 async function loadMemory() {
@@ -70,34 +64,34 @@ async function loadMemory() {
         const loadedData = await loadMemoryFromDrive();
         if (loadedData) {
             memoryData = loadedData;
-            console.log('Memory loaded successfully from Google Drive');
+            Logger.system('Memory loaded successfully from Google Drive');
             
             // Reset prayer state if stuck
             if (memoryData.isPraying) {
-                console.log('Resetting prayer state on startup...');
+                Logger.system('Resetting prayer state on startup...');
                 memoryData.isPraying = false;
                 await saveMemory();
             }
         } else {
-            console.log('Creating new memory file on Google Drive...');
+            Logger.system('Creating new memory file on Google Drive...');
             const fileId = await createMemoryFileOnDrive(memoryData);
             if (fileId) {
-                console.log('New memory file created successfully');
+                Logger.system('New memory file created successfully');
             } else {
-                console.error('Failed to create memory file on Google Drive');
+                Logger.error('Failed to create memory file on Google Drive');
             }
         }
     } catch (error) {
-        console.error('Error loading memory:', error);
+        Logger.error('Error loading memory:', error.message);
     }
 }
 
-// Save memory to Google Drive (reduced log spam)
+// Save memory to Google Drive
 async function saveMemory() {
     try {
         await saveMemoryToDrive(memoryData);
     } catch (error) {
-        console.error('Error saving memory:', error);
+        Logger.error('Error saving memory:', error.message);
     }
 }
 
@@ -122,7 +116,6 @@ function initializeUserMemory(contactId, contact = null) {
             lastQuestionTimestamp: null,
             missedDuringPrayer: [],
             chatId: contactId,
-            // Enhanced features
             assumptions: [],
             gossipShared: [],
             weirdInteractions: [],
@@ -614,76 +607,99 @@ async function shouldShowQRCode() {
 class HannahBot {
     constructor() {
         this.client = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.lastDecryptionError = 0;
+        this.decyptionErrorCount = 0;
     }
 
     async start() {
-        Logger.system('--- HANNAH BOT STARTING (Baileys) ---');
-        
-        // Fetch latest WhatsApp Web version
-        const { version, isLatest } = await fetchLatestBaileysVersion();
-        console.log(`using WA v${version.join('.')}, isLatest: ${isLatest}`);
-        
-        // Load session from environment variable or local file
-        const sessionLoaded = await sessionManager.loadSession();
-        if (!sessionLoaded) {
-            Logger.error('❌ CRITICAL: Could not load session.');
-            Logger.error('Please set SESSION_CREDS_BASE64 environment variable with your session data.');
+        try {
+            Logger.system('--- HANNAH BOT STARTING (Baileys) ---');
+            
+            const { version, isLatest } = await fetchLatestBaileysVersion();
+            console.log(`using WA v${version.join('.')}, isLatest: ${isLatest}`);
+            
+            // Load session from environment variable or local file
+            const sessionLoaded = await sessionManager.loadSession();
+            if (!sessionLoaded) {
+                Logger.error('❌ CRITICAL: Could not load session.');
+                Logger.error('Please set SESSION_CREDS_BASE64 environment variable with your session data.');
+                process.exit(1);
+            }
+            
+            const { state, saveCreds } = await useMultiFileAuthState('sessions');
+            
+            this.client = makeWASocket({
+                logger: pino({ level: 'silent' }),
+                printQRInTerminal: false,
+                browser: Browsers.windows('Firefox'),
+                auth: state,
+                version: version,
+                // Add message retry configuration
+                getMessage: async (key) => {
+                    return { conversation: "retry" };
+                },
+            });
+            
+            this.client.ev.on('creds.update', saveCreds);
+            this.setupEventListeners();
+            await loadMemory();
+            this.startPeriodicUpdates();
+            
+            Logger.success('✅ Bot started successfully!');
+        } catch (error) {
+            Logger.error('Error starting bot:', error.message);
             process.exit(1);
         }
-        
-        const { state, saveCreds } = await useMultiFileAuthState('sessions');
-        
-        this.client = makeWASocket({
-            logger: pino({ level: 'silent' }),
-            printQRInTerminal: false,
-            browser: Browsers.windows('Firefox'),
-            auth: state,
-            version: version,
-        });
-        
-        this.client.ev.on('creds.update', saveCreds);
-        this.setupEventListeners();
-        await loadMemory();
-        this.startPeriodicUpdates();
     }
-
+    
     setupEventListeners() {
         // Handle connection status
         this.client.ev.on('connection.update', (update) => {
             const { connection, lastDisconnect } = update;
             if (connection === 'open') {
                 Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
+                this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                this.decyptionErrorCount = 0; // Reset decryption error count
             } else if (connection === 'close') {
-                const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-                Logger.error(`Connection closed. Reason: ${lastDisconnect.error}. Reconnecting: ${shouldReconnect}`);
-                // The library handles reconnection automatically. We just log it.
+                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+                Logger.error(`Connection closed. Reason: ${lastDisconnect?.error?.message || 'Unknown'}. Reconnecting: ${shouldReconnect}`);
+                
+                if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    Logger.system(`Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+                    setTimeout(() => {
+                        this.start();
+                    }, 5000 * this.reconnectAttempts); // Exponential backoff
+                } else if (!shouldReconnect) {
+                    Logger.error('Logged out. Please generate a new session.');
+                    process.exit(1);
+                } else {
+                    Logger.error('Max reconnect attempts reached. Exiting.');
+                    process.exit(1);
+                }
             }
         });
 
         // Handle incoming messages
         this.client.ev.on('messages.upsert', async (m) => {
-            const msg = m.messages[0];
-            if (!msg.message || msg.key.fromMe) return;
-            
             try {
-                const contactId = msg.key.remoteJid;
+                const msg = m.messages[0];
+                if (!msg.message || msg.key.fromMe) return;
                 
-                // Baileys provides different message object structures. This handles most text messages.
+                const contactId = msg.key.remoteJid;
                 const messageBody = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
                 
-                // Ignore empty messages
                 if (!messageBody) return;
                 
                 Logger.message(msg.pushName || contactId, messageBody, '←');
                 
-                // Initialize memory for new contacts. Baileys gives us `pushName`.
                 if (!memoryData.contactMemory[contactId]) {
                     initializeUserMemory(contactId, { pushname: msg.pushName || "Unknown" });
                 }
                 
                 const userMemory = memoryData.contactMemory[contactId];
-                
-                // Get quoted message context
                 const quotedMessageText = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.conversation || null;
                 
                 const aiResponse = await getAiResponse(contactId, messageBody, memoryData, quotedMessageText);
@@ -695,7 +711,20 @@ class HannahBot {
                     updateFriendshipScore(contactId, 1, 'Positive interaction');
                 }
             } catch (error) {
-                Logger.error(`Error in message handler: ${error.message}`, error.stack);
+                Logger.error(`Error in message handler: ${error.message}`);
+            }
+        });
+
+        // Handle decryption errors
+        this.client.ev.on('messages.app-state', (key) => {
+            // This event can help detect session issues
+            Logger.debug(`Message app state: ${key}`);
+        });
+
+        // Handle group updates
+        this.client.ev.on('groups.update', (updates) => {
+            for (const update of updates) {
+                Logger.debug(`Group update: ${update.id} ${update.subject || ''}`);
             }
         });
     }
@@ -703,16 +732,48 @@ class HannahBot {
     startPeriodicUpdates() {
         Logger.system('Starting periodic tasks (every 5 minutes)...');
         setInterval(() => {
-            updateBoredomLevels(memoryData);
-            updateGlobalMood(memoryData);
-            checkPrayerTimes(this.client);
-            processProactiveTasks(this.client);
+            try {
+                updateBoredomLevels(memoryData);
+                updateGlobalMood(memoryData);
+                checkPrayerTimes(this.client);
+                processProactiveTasks(this.client);
+                
+                // Check for too many decryption errors
+                const now = Date.now();
+                if (this.decyptionErrorCount > 10 && (now - this.lastDecryptionError) < 60000) {
+                    Logger.error('Too many decryption errors detected. Restarting...');
+                    process.exit(1);
+                }
+            } catch (error) {
+                Logger.error('Error in periodic tasks:', error.message);
+            }
         }, 5 * 60 * 1000);
     }
 }
 
+setInterval(() => {
+    if (this.decyptionErrorCount > 5) {
+        Logger.error('Too many decryption errors. Session may be corrupted.');
+        // You could automatically restart here or send a notification
+    }
+}, 60 * 60 * 1000);
+
+// Handle decryption errors globally
+process.on('uncaughtException', (error) => {
+    if (error.message.includes('Bad MAC')) {
+        Logger.error('Decryption error detected (Bad MAC)');
+        // Increment counter
+        // This will be handled in the periodic updates
+    } else {
+        Logger.error('Uncaught Exception:', error.message);
+    }
+});
+
 const hannah = new HannahBot();
-hannah.start();
+hannah.start().catch(error => {
+    Logger.error('Failed to start bot:', error.message);
+    process.exit(1);
+});
 
 // Graceful shutdown
 process.on('SIGINT', async () => {

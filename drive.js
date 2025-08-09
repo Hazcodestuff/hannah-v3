@@ -1,108 +1,176 @@
+// drive.js (Updated)
+const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 const Logger = require('./logger.js');
 
-// Google Drive setup - using the same authentication as sessionManager
-const { google } = require('googleapis');
-const auth = new google.auth.GoogleAuth({
-    keyFile: path.join(__dirname, 'credentials.json'),
-    scopes: 'https://www.googleapis.com/auth/drive',
-});
+// Google Drive Setup
+let auth;
+if (process.env.GOOGLE_CREDENTIALS_BASE64) {
+    try {
+        const credentialsJson = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString();
+        const credentials = JSON.parse(credentialsJson);
+        auth = new google.auth.GoogleAuth({
+            credentials: credentials,
+            scopes: 'https://www.googleapis.com/auth/drive',
+        });
+    } catch (error) {
+        Logger.error('Failed to parse Google Drive credentials from environment variable:', error.message);
+    }
+} else {
+    const credentialsPath = path.join(__dirname, 'credentials.json');
+    if (fs.existsSync(credentialsPath)) {
+        auth = new google.auth.GoogleAuth({
+            keyFile: credentialsPath,
+            scopes: 'https://www.googleapis.com/auth/drive',
+        });
+    }
+}
+
 const drive = google.drive({ version: 'v3', auth });
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
-const MEMORY_FILE_NAME = 'hannah_memory.json';
+const MEMORY_FILE_NAME = 'memory.json';
 
+// Global variable to store the memory file ID
 let memoryFileId = null;
 
-async function saveMemoryToDrive(memoryData) {
-    if (!memoryFileId) {
-        Logger.error("Error: Cannot save memory because memory file ID is not known. Load memory first.");
-        return;
-    }
-    
+// Load memory from Google Drive
+async function loadMemoryFromDrive() {
     try {
-        const memoryString = JSON.stringify(memoryData, null, 2);
-        const { Readable } = require('stream');
-        const bufferStream = new Readable();
-        bufferStream.push(memoryString);
-        bufferStream.push(null);
+        if (!auth) {
+            Logger.error('Google Drive credentials not configured.');
+            return null;
+        }
+        
+        if (!GOOGLE_DRIVE_FOLDER_ID) {
+            Logger.error('Google Drive Folder ID not configured in environment variables.');
+            return null;
+        }
+
+        Logger.system('Loading memory from Google Drive...');
+
+        const listRes = await drive.files.list({
+            q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name='${MEMORY_FILE_NAME}' and trashed=false`,
+            fields: 'files(id, name, modifiedTime)',
+            pageSize: 1,
+        });
+
+        if (!listRes.data.files || listRes.data.files.length === 0) {
+            Logger.system('No memory file found on Google Drive.');
+            return null;
+        }
+
+        memoryFileId = listRes.data.files[0].id;
+        const modifiedTime = listRes.data.files[0].modifiedTime;
+        Logger.system(`Found memory file (ID: ${memoryFileId}, Last Modified: ${modifiedTime}). Downloading...`);
+
+        const fileRes = await drive.files.get({ 
+            fileId: memoryFileId, 
+            alt: 'media' 
+        });
+
+        Logger.success('✓ Memory loaded successfully from Google Drive!');
+        return fileRes.data;
+    } catch (error) {
+        Logger.error('Error loading memory from Google Drive', error.message);
+        return null;
+    }
+}
+
+// Save memory to Google Drive
+async function saveMemoryToDrive(memoryData) {
+    try {
+        if (!auth) {
+            Logger.error('Google Drive credentials not configured.');
+            return false;
+        }
+        
+        if (!GOOGLE_DRIVE_FOLDER_ID) {
+            Logger.error('Google Drive Folder ID not configured in environment variables.');
+            return false;
+        }
+
+        // If we don't have a memory file ID, try to create one
+        if (!memoryFileId) {
+            Logger.system('Memory file ID not found. Creating new memory file...');
+            memoryFileId = await createMemoryFileOnDrive(memoryData);
+            if (!memoryFileId) {
+                Logger.error('Failed to create memory file on Google Drive');
+                return false;
+            }
+            return true;
+        }
+
+        Logger.system('Saving memory to Google Drive...');
+
         const media = {
             mimeType: 'application/json',
-            body: bufferStream,
+            body: JSON.stringify(memoryData),
         };
+
         await drive.files.update({
             fileId: memoryFileId,
             media: media,
         });
-        Logger.debug('Memory saved to Google Drive');
-    } catch (e) {
-        Logger.error("--- NON-FATAL ERROR saving memory to Drive ---", e.message);
-    }
-}
 
-async function loadMemoryFromDrive() {
-    Logger.system("Attempting to load memory from Google Drive...");
-    
-    try {
-        const fileList = await drive.files.list({
-            q: `'${GOOGLE_DRIVE_FOLDER_ID}' in parents and name='${MEMORY_FILE_NAME}' and trashed=false`,
-            fields: 'files(id, name)',
-        });
+        Logger.success('✓ Memory saved successfully to Google Drive!');
+        return true;
+    } catch (error) {
+        Logger.error('Error saving memory to Google Drive', error.message);
         
-        if (fileList.data.files && fileList.data.files.length > 0) {
-            memoryFileId = fileList.data.files[0].id;
-            Logger.system(`Found memory file with ID: ${memoryFileId}. Loading...`);
-            
-            const file = await drive.files.get({ fileId: memoryFileId, alt: 'media' });
-            
-            let loadedData = file.data;
-            if (typeof loadedData !== 'object' || loadedData === null) {
-                 throw new Error("Loaded memory is not a valid object.");
-            }
-            if (!loadedData.contactMemory) loadedData.contactMemory = {};
-            
-            Logger.system('Successfully loaded memory from Google Drive.');
-            return loadedData;
+        // If the file was not found, try to create a new one
+        if (error.message.includes('notFound') || error.message.includes('File not found')) {
+            Logger.system('Memory file not found. Creating new file...');
+            memoryFileId = await createMemoryFileOnDrive(memoryData);
+            return memoryFileId !== null;
         }
         
-        Logger.system('No hannah_memory.json file found in the specified Google Drive folder. Creating new one...');
-        return null; 
-    } catch (e) {
-        Logger.error("ERROR loading memory from Drive:", e.message);
-        return null;
+        return false;
     }
 }
 
+// Create memory file on Google Drive
 async function createMemoryFileOnDrive(memoryData) {
     try {
-        const memoryString = JSON.stringify(memoryData, null, 2);
-        const { Readable } = require('stream');
-        const bufferStream = new Readable();
-        bufferStream.push(memoryString);
-        bufferStream.push(null);
+        if (!auth) {
+            Logger.error('Google Drive credentials not configured.');
+            return null;
+        }
+        
+        if (!GOOGLE_DRIVE_FOLDER_ID) {
+            Logger.error('Google Drive Folder ID not configured in environment variables.');
+            return null;
+        }
+
+        Logger.system('Creating memory file on Google Drive...');
+
+        const fileMetadata = {
+            name: MEMORY_FILE_NAME,
+            parents: [GOOGLE_DRIVE_FOLDER_ID],
+        };
+
         const media = {
             mimeType: 'application/json',
-            body: bufferStream,
+            body: JSON.stringify(memoryData),
         };
+
         const file = await drive.files.create({
-            resource: {
-                name: MEMORY_FILE_NAME,
-                parents: [GOOGLE_DRIVE_FOLDER_ID],
-            },
+            resource: fileMetadata,
             media: media,
             fields: 'id',
         });
+
         memoryFileId = file.data.id;
-        Logger.system(`Created memory file with ID: ${memoryFileId}`);
+        Logger.success(`✓ Memory file created successfully (ID: ${memoryFileId})!`);
         return memoryFileId;
-    } catch (e) {
-        Logger.error("Error creating memory file on Drive:", e.message);
+    } catch (error) {
+        Logger.error('Error creating memory file on Google Drive', error.message);
         return null;
     }
 }
 
-module.exports = { 
-    saveMemoryToDrive, 
-    loadMemoryFromDrive, 
-    createMemoryFileOnDrive 
+module.exports = {
+    loadMemoryFromDrive,
+    saveMemoryToDrive,
+    createMemoryFileOnDrive
 };
