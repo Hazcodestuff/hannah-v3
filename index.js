@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 const open = require('open');
 const http = require('http');
 const url = require('url');
+const Logger = require('./logger.js');
 
 const SCOPES = ['https://www.googleapis.com/auth/drive'];
 const TOKEN_PATH = path.join(__dirname, 'token.json');
@@ -837,25 +838,28 @@ hannah.start().catch(error => {
     process.exit(1);
 });
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    Logger.system('\nShutting down gracefully...');
-    await saveMemory(); // Just save the memory state
-    process.exit(0);
-});
-
-process.on('uncaughtException', (err) => {
-    Logger.error('Uncaught Exception:', err.message);
-    // Depending on the error, you might want to restart or just log
-});
-
-// Add this to the end of your index.js
+// Improved error handling for the entire process
 process.on('unhandledRejection', (reason, promise) => {
-    Logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     // Don't exit the process, just log the error
 });
 
 process.on('uncaughtException', (error) => {
-    Logger.error('Uncaught Exception:', error);
+    console.error('Uncaught Exception:', error.message);
     // Don't exit the process, just log the error
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('\nShutting down gracefully...');
+    try {
+        await saveMemory();
+        server.close(() => {
+            console.log('HTTP server closed');
+            process.exit(0);
+        });
+    } catch (error) {
+        console.error('Error during shutdown:', error.message);
+        process.exit(0);
+    }
 });
