@@ -1,4 +1,4 @@
-// oauth.js (Updated with better error handling)
+// oauth.js (Robust version for Render)
 const { google } = require('googleapis');
 const Logger = require('./logger.js');
 
@@ -25,26 +25,22 @@ function initializeOAuth() {
             const credentialsJson = Buffer.from(process.env.GOOGLE_OAUTH_CREDS_BASE64, 'base64').toString();
             const credentials = JSON.parse(credentialsJson);
             
-            // Debug the credentials structure
             Logger.system('Credentials structure keys:', Object.keys(credentials));
             
             // Handle different credential structures
             let client_id, client_secret, redirect_uris;
             
             if (credentials.installed) {
-                // Standard OAuth 2.0 credentials
                 Logger.system('Using credentials.installed structure');
                 client_id = credentials.installed.client_id;
                 client_secret = credentials.installed.client_secret;
                 redirect_uris = credentials.installed.redirect_uris || ['http://localhost'];
             } else if (credentials.web) {
-                // Web application credentials
                 Logger.system('Using credentials.web structure');
                 client_id = credentials.web.client_id;
                 client_secret = credentials.web.client_secret;
                 redirect_uris = credentials.web.redirect_uris || ['http://localhost'];
             } else {
-                // Direct credentials (less common)
                 Logger.system('Using direct credentials structure');
                 client_id = credentials.client_id;
                 client_secret = credentials.client_secret;
@@ -53,7 +49,6 @@ function initializeOAuth() {
             
             if (!client_id || !client_secret) {
                 Logger.error('Invalid credentials structure. Missing client_id or client_secret.');
-                Logger.system('Credentials:', JSON.stringify(credentials, null, 2));
                 return false;
             }
             
@@ -65,6 +60,7 @@ function initializeOAuth() {
             return true;
         } catch (error) {
             Logger.error('Failed to parse Google OAuth credentials from environment variable:', error.message);
+            Logger.error('Error details:', error);
             return false;
         }
     } else {
