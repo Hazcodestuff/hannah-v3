@@ -1,4 +1,4 @@
-// oauth.js
+// oauth.js (Updated with debugging)
 const { google } = require('googleapis');
 const Logger = require('./logger.js');
 
@@ -6,7 +6,16 @@ const Logger = require('./logger.js');
 let auth = null;
 
 function initializeOAuth() {
-    if (process.env.GOOGLE_OAUTH_TOKEN_BASE64 && process.env.GOOGLE_OAUTH_CREDS_BASE64) {
+    Logger.system('=== Initializing OAuth ===');
+    
+    // Check if environment variables are set
+    const hasToken = !!process.env.GOOGLE_OAUTH_TOKEN_BASE64;
+    const hasCreds = !!process.env.GOOGLE_OAUTH_CREDS_BASE64;
+    
+    Logger.system(`GOOGLE_OAUTH_TOKEN_BASE64: ${hasToken ? '✓ Set' : '✗ Not set'}`);
+    Logger.system(`GOOGLE_OAUTH_CREDS_BASE64: ${hasCreds ? '✓ Set' : '✗ Not set'}`);
+    
+    if (hasToken && hasCreds) {
         try {
             // Decode base64 token
             const tokenJson = Buffer.from(process.env.GOOGLE_OAUTH_TOKEN_BASE64, 'base64').toString();

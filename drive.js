@@ -3,8 +3,8 @@ const { google } = require('googleapis');
 const Logger = require('./logger.js');
 const { initializeOAuth, getAuth, isAuthConfigured } = require('./oauth.js');
 
-// Initialize OAuth
-initializeOAuth();
+// Initialize OAuth - this is important!
+const oauthInitialized = initializeOAuth();
 
 const drive = google.drive({ version: 'v3', auth: getAuth() });
 const GOOGLE_DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;

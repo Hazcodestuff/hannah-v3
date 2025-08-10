@@ -195,6 +195,19 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
             } catch (error) {
                 // Log detailed error information
                 Logger.error(`API call failed (attempt ${retryCount + 1})`, error.message);
+                
+                // If it's a service unavailable error (503), return a fallback response
+                if (error.response && error.response.status === 503) {
+                    Logger.error('Groq API service unavailable. Using fallback response.');
+                    return {
+                        choices: [{
+                            message: {
+                                content: "[ACTION_BLOCK][TEXT]ugh, my brain is completely fried rn. ttyl.[/ACTION_BLOCK]"
+                            }
+                        }]
+                    };
+                }
+                
                 if (error.response) {
                     Logger.error(`Error status: ${error.response.status}`, error.response.data);
                     
@@ -234,6 +247,7 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
         return aiResponse;
     } catch (e) {
         Logger.error(`Error getting AI reply from Groq after retries`, e.message);
+        // Return a fallback response instead of throwing an error
         return "[ACTION_BLOCK][TEXT]ugh, my brain is completely fried rn. ttyl.[/ACTION_BLOCK]";
     }
 }
