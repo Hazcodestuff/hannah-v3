@@ -16,7 +16,12 @@ const SessionManager = require('./sessionManager');
 const sessionManager = new SessionManager();
 
 // Import modules
-const { hannahProfile, getAiResponse, sendHannahsMessage } = require('./hannah.js'); 
+const { 
+    hannahProfile, 
+    getAiResponse, 
+    sendHannahsMessage, 
+    processSpecialActions 
+} = require('./hannah.js'); 
 const { loadMemoryFromDrive, saveMemoryToDrive, createMemoryFileOnDrive } = require('./drive.js');
 const { 
     updateGlobalMood, 
@@ -188,43 +193,47 @@ function updateConversationHistory(contactId, userMessage, hannahResponse) {
     saveMemory();
 }
 
-// Extract and store memories with enhanced keyword detection
-function extractAndStoreMemories(contactId, message, response) {
+// In hannah.js, update the extractAndStoreMemories function
+function extractAndStoreMemories(contactId, msg, response) { // Note: the parameter is now 'msg'
     const userMemory = memoryData.contactMemory[contactId];
     if (!userMemory) return;
-    
-    // Track questions
-    const isQuestion = message.includes('?');
-    if (isQuestion) {
+
+    // We get the message body from the msg object
+    const messageBody = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+
+    // Track questions (no change here)
+    if (messageBody.includes('?')) {
         userMemory.isAwaitingReply = true;
         userMemory.lastQuestionTimestamp = Date.now();
         userMemory.hasFollowedUpOnGhosting = false;
     }
-    
-    // Detect weird/cheesy interactions for gossip
+
     const weirdKeywords = [
-        'i like you', 'love you', 'date me', 'sexy', 'hot', 'marry me', 
-        'be my girlfriend', 'you are beautiful', 'wanna hook up', 'your boyfriend', 'your girlfriend'
+        'cute', 'beautiful', 'pretty', 'gorgeous', 'hot', 'sexy', 'angel', 'love', 'like you',
+        'have a crush', 'date me', 'be my girlfriend', 'be my boyfriend', 'creepy', 'weird',
+        'stop it', 'dont', 'ridiculous', 'compliments', 'flirting', 'hitting on', 'hitting on me',
+        'watching you', 'thinking about you', 'dream about you'
     ];
-    const messageLower = message.toLowerCase();
+    const messageLower = messageBody.toLowerCase();
     
-    for (const keyword of weirdKeywords) {
-        if (messageLower.includes(keyword)) {
-            const weirdInteraction = {
-                keyword: keyword,
-                message: message,
-                timestamp: Date.now(),
-                sharedWith: []
-            };
-            
-            // Ensure arrays exist
-            if (!userMemory.weirdInteractions) userMemory.weirdInteractions = [];
-            userMemory.weirdInteractions.push(weirdInteraction);
-            
-            Logger.action(`Stored weird interaction from ${userMemory.contactInfo.name}: "${message}"`);
-            triggerGossipAboutContact(contactId, weirdInteraction);
-            break;
-        }
+    // Use regex for whole-word matching (no change here)
+    const weirdKeywordRegex = new RegExp(`\\b(${weirdKeywords.join('|')})\\b`, 'i');
+    const match = messageLower.match(weirdKeywordRegex);
+
+    if (match) {
+        // THIS IS THE KEY CHANGE: Store the entire message object
+        const weirdInteraction = {
+            message: msg, // Store the full object, not just the text
+            keyword: match[1],
+            timestamp: Date.now(),
+            sharedWith: []
+        };
+        
+        if (!userMemory.weirdInteractions) userMemory.weirdInteractions = [];
+        userMemory.weirdInteractions.push(weirdInteraction);
+        
+        Logger.action(`Stored weird interaction object from ${userMemory.contactInfo.name}: "${messageBody}"`);
+        triggerGossipAboutContact(contactId, weirdInteraction);
     }
     
     // Store important memories
@@ -250,13 +259,14 @@ function extractAndStoreMemories(contactId, message, response) {
 }
 
 // Trigger gossip with close friends
+// In hannah.js, update the triggerGossipAboutContact function
 function triggerGossipAboutContact(contactId, weirdInteraction) {
     const contactMemory = memoryData.contactMemory[contactId];
     if (!contactMemory) return;
     
     const contactName = contactMemory.contactInfo.name;
     
-    Logger.action(`Triggering gossip about ${contactName}`);
+    Logger.action(`Triggering gossip about ${contactName}: "${weirdInteraction.message}"`);
     
     // Share with ALL contacts who have friendship score 10+ (lowered threshold)
     let gossipCount = 0;
@@ -323,7 +333,7 @@ async function processProactiveTasks(client) {
         // Execute all jobs
         for (const job of allJobs) {
             if (job.decision) {
-                await sendHannahsMessage(client, job.userData.chatId, job.decision, job.userName);
+                await sendHannahsMessage(client, job.userData.chatId, job.decision, job.userName, memoryData);
                 job.userData.lastMessageTimestamp = Date.now();
                 job.userData.boredomLevel = 0;
             }
@@ -412,6 +422,8 @@ class HannahBot {
         this.client = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5;
+        this.lastDecryptionError = 0;
+        this.decyptionErrorCount = 0;
     }
 
     async start() {
@@ -432,18 +444,24 @@ class HannahBot {
             
             const { state, saveCreds } = await useMultiFileAuthState('sessions');
             
-            // Update the makeWASocket configuration in index.js
-this.client = makeWASocket({
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
-    browser: Browsers.ubuntu('Chrome'), // Use a different browser/OS combination
-    auth: state,
-    version: version,
-    // Add message retry configuration
-    getMessage: async (key) => {
-        return { conversation: "retry" };
-    },
-});
+            this.client = makeWASocket({
+                logger: pino({ level: 'silent' }),
+                printQRInTerminal: false,
+                browser: Browsers.ubuntu('Chrome'), // Changed from windows to ubuntu
+                auth: state,
+                version: version,
+                // Add message retry configuration
+                getMessage: async (key) => {
+                    return { conversation: "retry" };
+                },
+                // Add better session management
+                markOnlineOnConnect: false,
+                syncFullHistory: false,
+                connectTimeoutMs: 60000,
+                keepAliveIntervalMs: 30000,
+                qrTimeout: 40000,
+                defaultQueryTimeoutMs: 20000,
+            });
             
             this.client.ev.on('creds.update', saveCreds);
             this.setupEventListeners();
@@ -459,34 +477,34 @@ this.client = makeWASocket({
     
     setupEventListeners() {
         // Handle connection status
-        // Update the connection.update handler in index.js
-this.client.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
-    if (connection === 'open') {
-        Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
-        this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-    } else if (connection === 'close') {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        
-        Logger.error(`Connection closed. Reason: ${lastDisconnect?.error?.message || 'Unknown'}. Status code: ${statusCode}. Reconnecting: ${shouldReconnect}`);
-        
-        if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Exponential backoff with max 30s
-            Logger.system(`Reconnecting in ${delay/1000} seconds... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-            setTimeout(() => {
-                this.start();
-            }, delay);
-        } else if (!shouldReconnect) {
-            Logger.error('Logged out. Please generate a new session.');
-            process.exit(1);
-        } else {
-            Logger.error('Max reconnect attempts reached. Exiting.');
-            process.exit(1);
-        }
-    }
-});
+        this.client.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect } = update;
+            if (connection === 'open') {
+                Logger.success(`Hannah is ready! Connected via Baileys. 🌟`);
+                this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                this.decyptionErrorCount = 0; // Reset decryption error count
+            } else if (connection === 'close') {
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                
+                Logger.error(`Connection closed. Reason: ${lastDisconnect?.error?.message || 'Unknown'}. Status code: ${statusCode}. Reconnecting: ${shouldReconnect}`);
+                
+                if (shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Exponential backoff with max 30s
+                    Logger.system(`Reconnecting in ${delay/1000} seconds... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+                    setTimeout(() => {
+                        this.start();
+                    }, delay);
+                } else if (!shouldReconnect) {
+                    Logger.error('Logged out. Please generate a new session.');
+                    process.exit(1);
+                } else {
+                    Logger.error('Max reconnect attempts reached. Exiting.');
+                    process.exit(1);
+                }
+            }
+        });
 
         // Handle incoming messages
         this.client.ev.on('messages.upsert', async (m) => {
@@ -510,16 +528,56 @@ this.client.ev.on('connection.update', (update) => {
                 
                 const aiResponse = await getAiResponse(contactId, messageBody, memoryData, quotedMessageText);
                 
-                if (aiResponse) {
-                    await sendHannahsMessage(this.client, contactId, aiResponse, userMemory.contactInfo.name);
+                if (aiResponse) {await sendHannahsMessage(this.client, contactId, aiResponse, userMemory.contactInfo.name, memoryData);
+
+                    // 4. Update conversation history and memory as before.
                     updateConversationHistory(contactId, messageBody, aiResponse);
-                    extractAndStoreMemories(contactId, messageBody, aiResponse);
+                    extractAndStoreMemories(contactId, msg, aiResponse);
                     updateFriendshipScore(contactId, 1, 'Positive interaction');
                 }
             } catch (error) {
                 Logger.error(`Error in message handler: ${error.message}`);
+
+                // Check if it's a decryption error and handle it
+                if (error.message.includes('decrypt') || error.message.includes('Bad MAC')) {
+                    this.handleDecryptionError();
+                }
             }
         });
+        
+        // Handle app state updates (for session management)
+        this.client.ev.on('app.state', (update) => {
+            Logger.debug(`App state update: ${JSON.stringify(update)}`);
+        });
+        
+        // Handle call updates
+        this.client.ev.on('call', (call) => {
+            Logger.debug(`Call update: ${JSON.stringify(call)}`);
+        });
+    }
+    
+    // Handle decryption errors
+    handleDecryptionError() {
+        const now = Date.now();
+        this.decyptionErrorCount++;
+        this.lastDecryptionError = now;
+        
+        Logger.error(`Decryption error detected. Count: ${this.decyptionErrorCount}`);
+        
+        // If we get too many decryption errors in a short time, restart the connection
+        if (this.decyptionErrorCount > 5 && (now - this.lastDecryptionError) < 60000) {
+            Logger.error('Too many decryption errors detected. Restarting connection...');
+            
+            // Close the current connection
+            if (this.client) {
+                this.client.ws.close();
+            }
+            
+            // Reconnect after a delay
+            setTimeout(() => {
+                this.start();
+            }, 5000);
+        }
     }
 
     startPeriodicUpdates() {
@@ -530,6 +588,13 @@ this.client.ev.on('connection.update', (update) => {
                 updateGlobalMood(memoryData);
                 checkPrayerTimes(this.client);
                 processProactiveTasks(this.client);
+                
+                // Check for too many decryption errors
+                const now = Date.now();
+                if (this.decyptionErrorCount > 10 && (now - this.lastDecryptionError) < 60000) {
+                    Logger.error('Too many decryption errors detected. Restarting...');
+                    this.handleDecryptionError();
+                }
             } catch (error) {
                 Logger.error('Error in periodic tasks:', error.message);
             }

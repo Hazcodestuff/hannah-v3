@@ -146,7 +146,8 @@ async function setPrayerState(client, memoryData, prayerName, durationMinutes) {
             const { sendHannahsMessage } = require('./hannah.js');
             for (const job of jobs) {
                 try {
-                    await sendHannahsMessage(client, job.userData.chatId, job.decision, job.userName);
+                    // Inside the setTimeout in setPrayerState in tasks.js
+await sendHannahsMessage(client, job.userData.chatId, job.decision, job.userName, memoryData);
                     job.userData.lastMessageTimestamp = Date.now();
                     job.userData.boredomLevel = 0;
                 } catch (error) {
