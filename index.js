@@ -1,5 +1,6 @@
 // index.js (Fixed for Render)
 require('dotenv').config();
+require('./debug-render.js');
 const http = require('http');
 const { 
     default: makeWASocket, 
