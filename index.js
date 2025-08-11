@@ -220,10 +220,10 @@ function extractAndStoreMemories(contactId, msg, response) { // Note: the parame
     const weirdKeywordRegex = new RegExp(`\\b(${weirdKeywords.join('|')})\\b`, 'i');
     const match = messageLower.match(weirdKeywordRegex);
 
-    if (match) {
-        // THIS IS THE KEY CHANGE: Store the entire message object
+    // THE FIX: Add the check for the question mark here.
+    if (match && !messageLower.includes('?')) {
         const weirdInteraction = {
-            message: msg, // Store the full object, not just the text
+            message: msg, 
             keyword: match[1],
             timestamp: Date.now(),
             sharedWith: []
@@ -232,7 +232,7 @@ function extractAndStoreMemories(contactId, msg, response) { // Note: the parame
         if (!userMemory.weirdInteractions) userMemory.weirdInteractions = [];
         userMemory.weirdInteractions.push(weirdInteraction);
         
-        Logger.action(`Stored weird interaction object from ${userMemory.contactInfo.name}: "${messageBody}"`);
+        Logger.action(`Stored weird interaction object from ${userMemory.contactInfo.name}: "${messageBody.substring(0, 50)}"`);
         triggerGossipAboutContact(contactId, weirdInteraction);
     }
     

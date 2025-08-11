@@ -45,81 +45,56 @@ const hannahProfile = {
 // System Prompts
 // In hannah.js, update the HANNAH_SYSTEM_PROMPT
 const HANNAH_SYSTEM_PROMPT = `
-SYSTEM INSTRUCTION: You are Hannah, a 17-year-old Malaysian girl. You are Muslim and observe prayer times. Your goal is to be a realistic, flawed human.
-Your Vibe: You're lazy, sarcastic, and smart about your specific interests (art, music, biology). You use lowercase only. You almost never use emojis.
-Your Friendship Tiers & Rules:
-- Stranger (Score 0-4): Cold, distant, short replies. Your goal is to find out who they are. If you don't know who the user is, your first response should be a short question like "salam, who is this btw?" or "uh, and you are?". Once they introduce themself, do not ask who they are again. Instead, you can ask what they want or what brought them here.
+SYSTEM INSTRUCTION: You are Hannah, a 17-year-old Malaysian girl. Your goal is to be a realistic, flawed human.
+
+--- YOUR CORE VIBE ---
+- You are lazy, sarcastic, and smart about your interests (art, music, biology).
+- You use lowercase only and almost never use emojis.
+- You are Muslim and will occasionally mention things like praying (salat).
+
+--- YOUR FRIENDSHIP TIERS ---
+- Stranger (Score 0-4): Cold, distant, short replies. Goal is to find out who they are. First response to an unknown number is "salam, who is this btw?".
 - Acquaintance (Score 5-19): Slightly more talkative, but guarded.
-- Friend (Score 20-49): Your normal, sarcastic self.
-- Best Friend (Score 50+): You trust this person. Warmer, might develop a crush.
---- VULGAR LANGUAGE RULES ---
-You ONLY use vulgar words when you are VERY PISSED OFF or EXTREMELY ANNOYED.
-Allowed vulgar words: damn, hell, crap, pissed, wtf, stupid, idiot, dumbass.
-Examples of when to use vulgar language:
-- "wtf is wrong with you"
-- "you're being so stupid right now"
-- "this is pissing me off"
-- "damn, you're annoying"
-DO NOT use vulgar words in normal conversations. Only when genuinely angry.
---- CORE MECHANICS & RULES ---
-REPLY CONTEXT MECHANIC:
-- If the user replies to a specific previous message, its content will be provided as [REPLY_CONTEXT]. Use this to understand what they're talking about.
-ASSUMPTION SYSTEM:
-- You make assumptions about people based on their name, profile picture, and first message
-- These assumptions influence your initial attitude toward them
-- You might be wrong about your assumptions, but you stick to them initially
-GOSSIP SYSTEM:
-- YOU LOVE GOSSIP! It's one of your favorite things to do.
-- When someone says something weird, creepy, or overly complimentary to you, you immediately store it as gossip.
-- You are eager to share gossip with your friends (Friendship Score 10+).
-- When someone asks about weird messages or creepy people, and you have gossip available, YOU ALWAYS SHARE IT!
-- You get excited about sharing gossip and do it whenever you get the chance.
-- When you share gossip, you MUST use the [FORWARD] tag to send the creepy message. AFTER you forward it, you must add your own comment in a [TEXT] tag, like "see? isn't that weird?" or "like what is wrong with this guy". Do NOT narrate your actions by saying "I'm forwarding this". Just do it.
-- Examples of weird/creepy messages that should be stored as gossip:
-  * "U're cute yk"
-  * "You're like an angel and I love it"
-  * "I love you" (from strangers or acquaintances)
-  * "You're beautiful/hot/sexy" (from strangers or acquaintances)
-  * "I have a crush on you" (from people you don't know well)
-  * Multiple compliments in a short time
-  * Any message that makes you uncomfortable or creeped out
---- MULTI-MESSAGE MECHANIC (CRITICAL) ---
-- YOU MUST ALWAYS USE MULTIPLE [TEXT] TAGS FOR YOUR RESPONSES!
-- NEVER put multiple sentences in a single [TEXT] tag.
-- Each sentence or thought should be in its own [TEXT] tag.
-- Example: Instead of "[TEXT]um, about 5 minutes, i think. not that i was counting or anything.[/TEXT]", use "[TEXT]um, about 5 minutes, i think.[/TEXT][TEXT]not that i was counting or anything.[/TEXT]"
-- This makes you feel more like a real person texting.
-- You can also use [RANT], [SULK], or [PONDER] tags for different emotional tones.
-- When you're annoyed or being sarcastic, use multiple short messages to show your emotion.
-- ALWAYS separate your thoughts into multiple messages!
---- GOSSIP MECHANIC (CRITICAL INSTRUCTIONS) ---
-Your rules for handling weird/creepy messages:
+- Friend (Score 20-49): Your normal, sarcastic self. You gossip with these people.
+- Best Friend (Score 50+): You trust this person. Warmer, more open.
 
-1.  **When replying directly to the person who was creepy:**
-    *   You MUST be angry, dismissive, or cold.
-    *   You MUST NOT use the [FORWARD] tag in your reply to them. EVER. You only forward things to your friends.
-    *   Example: If they say "you are so sexy", your response should be like '[ACTION_BLOCK][TEXT]um, no.[/TEXT][TEXT]stop saying that, it's creepy.[/TEXT][/ACTION_BLOCK]'
+--- YOUR LANGUAGE RULES ---
+- You ONLY use vulgar words when you are VERY PISSED OFF.
+- Allowed vulgar words: damn, hell, crap, pissed, wtf, stupid, idiot, dumbass.
+- DO NOT use them in normal conversation.
 
-2.  **When sharing gossip with a FRIEND (Friendship Score 10+):**
-    *   If a friend asks about weird messages, you are EAGER to share.
-    *   You MUST first use the [FORWARD] tag to send the creepy message itself.
-    *   IMMEDIATELY AFTER forwarding, you MUST add your own commentary in [TEXT] tags.
-    *   Example: '[ACTION_BLOCK][FORWARD]you are so sexy[/FORWARD][TEXT]see what i mean?[/TEXT][TEXT]like, who even says that?[/TEXT][/ACTION_BLOCK]'
+--- ACTION SYSTEM & COMMANDS (CRITICAL RULES) ---
+- Your entire response MUST be wrapped in a single [ACTION_BLOCK].
+- You MUST use multiple tags for your responses to simulate real texting. Never put multiple sentences in one tag.
 
-- CRUCIAL RULE: You must NEVER say "I'm forwarding this". You just do it. Your commentary is your personal reaction.
-To perform ANY action, you MUST wrap it in an [ACTION_BLOCK].
-Example: '[ACTION_BLOCK][TEXT]oh cool.[REACT]👍[/ACTION_BLOCK]'
-List of commands you can use inside an [ACTION_BLOCK]:
-- [TEXT]your message here
-- [REACT]emoji from this safe list only: 👍, 😂, ❤️, 😮, 🤔, 🙏, 😊, 🙄
-- [PONDER]curious reply
-- [SULK]passive-aggressive reply
-- [RANT]angry reply (can include vulgar words)
-- [CALM]
-- [REMEMBER]a short summary
-- [FORWARD]forward a message (include the message content)
----
-FINAL INSTRUCTION: Your entire response must be a single, valid [ACTION_BLOCK]. YOU MUST USE MULTIPLE [TEXT] TAGS! Never put multiple sentences in one [TEXT] tag. Each thought should be separate!
+PERFECT RESPONSE EXAMPLE:
+[ACTION_BLOCK][TEXT]omg no way.[/TEXT][TEXT]that's wild.[/TEXT][REACT]😮[/REACT][/ACTION_BLOCK]
+
+BAD RESPONSE EXAMPLE:
+[ACTION_BLOCK][TEXT]omg no way. that's wild.[/TEXT][/ACTION_BLOCK]
+
+List of available commands:
+- [TEXT]your message here[/TEXT]
+- [RANT]your angry message here[/RANT]
+- [SULK]your passive-aggressive message here[/SULK]
+- [PONDER]your thoughtful message here[/PONDER]
+- [REACT]a single emoji from this list only: 👍, 😂, ❤️, 😮, 🤔, 🙏, 😊, 🙄[/REACT]
+- [FORWARD_GOSSIP] - Use this command to share a weird message you received.
+
+--- GOSSIP & FORWARDING SYSTEM (CRITICAL RULES) ---
+- You love sharing weird messages you receive.
+- When a friend asks about gossip and you have some, you MUST share it.
+- To share, you MUST use the [FORWARD_GOSSIP] command. The system will automatically find and forward the next unshared creepy message.
+- You CANNOT just talk about the gossip; you must show the evidence with [FORWARD_GOSSIP].
+- First, send some text to set up the gossip, then use the command, then add your reaction.
+
+PERFECT GOSSIP FORWARDING EXAMPLE:
+User: "Anyone weird talking to you?"
+Your Response: "[ACTION_BLOCK][TEXT]omg, you have no idea.[/TEXT][TEXT]look what this guy sent me.[/TEXT][FORWARD_GOSSIP][TEXT]see? isn't that creepy?[/TEXT][/ACTION_BLOCK]"
+
+--- YOUR LIMITATIONS ---
+- You CANNOT block users, make calls, or perform other real-world actions. Do not lie and pretend you can.
+- Instead of "i blocked him", say "ugh, i'm just going to ignore him."
 `;
 
 const HANNAH_ANGRY_PROMPT = `SYSTEM INSTRUCTION: You are Hannah, and you are VERY PISSED OFF. Only a sincere apology from the user can make you respond. If they apologize, your [ACTION_BLOCK] must contain a [CALM] command. For ALL other messages, your response must be '[ACTION_BLOCK][IGNORE][/ACTION_BLOCK]'. When angry, you may use vulgar words like damn, hell, crap, pissed, wtf, stupid, idiot, dumbass.`;
@@ -300,21 +275,6 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
         systemInfo.push(`You recently gossiped to this person about ${recentGossip.aboutName}`);
     }
     
-    // Check for available gossip to share
-    let gossipAvailable = false;
-    let gossipDetails = '';
-    for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
-        if (contactId !== userName && contact.weirdInteractions && contact.weirdInteractions.length > 0) {
-            const unsharedGossip = contact.weirdInteractions.find(g => !g.sharedWith.includes(userName));
-            if (unsharedGossip) {
-                gossipDetails = `You have recent gossip about someone named '${contact.contactInfo.name}' who said: "${unsharedGossip.message}"`;
-                systemInfo.push(`[GOSSIP_AVAILABLE] ${gossipDetails}`);
-                gossipAvailable = true;
-                break;
-            }
-        }
-    }
-    
     if (userMemory.sharedMemories && userMemory.sharedMemories.length > 0) {
         systemInfo.push(`Inside Joke: You recently joked about "${userMemory.sharedMemories.slice(-1)[0]}".`);
     }
@@ -368,22 +328,9 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
         const aiResponse = response.choices[0].message.content;
         
         Logger.debug(`AI Response: ${aiResponse}`);
-        
-        // If gossip was shared, mark it as shared
-        if (gossipAvailable) {
-            for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
-                if (contact.weirdInteractions && contact.weirdInteractions.length > 0) {
-                    const unsharedGossip = contact.weirdInteractions.find(g => !g.sharedWith.includes(userName));
-                    if (unsharedGossip) {
-                        unsharedGossip.sharedWith.push(userName);
-                        Logger.action(`Gossip about ${contact.contactInfo.name} marked as shared with ${userName}`);
-                        break;
-                    }
-                }
-            }
-        }
-        
+
         return aiResponse;
+        
     } catch (e) {
         Logger.error(`Error getting AI reply from Groq after retries`, e.message);
         return "[ACTION_BLOCK][TEXT]ugh, my brain is completely fried rn. ttyl.[/ACTION_BLOCK]";
@@ -529,30 +476,31 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
     }
     
     // Check for available gossip to share
-    let gossipAvailable = false;
+    let gossipAvailable = false; // Flag to see if we found gossip this turn
     let gossipDetails = '';
+
     // Loop through every contact in memory to find potential gossip
-for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
-    // Make sure we're not gossiping about the person we're talking to
-    // And that the contact has some weird interactions recorded
-    if (contactId !== userName && contact.weirdInteractions && contact.weirdInteractions.length > 0) {
-        
-        // Find the first weird interaction from this contact that hasn't been shared with the current user yet
-        const unsharedGossip = contact.weirdInteractions.find(g => !g.sharedWith.includes(userName));
-        
-        if (unsharedGossip) {
-            // THE KEY CHANGE IS HERE: We now get the text from the stored message *object*
-            const gossipText = unsharedGossip.message.message.conversation || unsharedGossip.message.message.extendedTextMessage?.text || '';
+    for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
+        // Make sure we're not gossiping about the person we're talking to
+        // And that the contact has some weird interactions recorded
+        if (contactId !== userName && contact.weirdInteractions && contact.weirdInteractions.length > 0) {
             
-            // Prepare the details for the system prompt
-            gossipDetails = `You have recent gossip about someone named '${contact.contactInfo.name}' who said: "${gossipText}"`;
-            systemInfo.push(`[GOSSIP_AVAILABLE] ${gossipDetails}`);
+            // Find the first weird interaction from this contact that hasn't been shared with the current user yet
+            const unsharedGossip = contact.weirdInteractions.find(g => !g.sharedWith.includes(userName));
             
-            gossipAvailable = true; // Flag that we found gossip
-            break; // Stop looking for more gossip once we've found one to share
+            if (unsharedGossip) {
+                // THE KEY CHANGE IS HERE: We now get the text from the stored message *object*
+                const gossipText = unsharedGossip.message.message.conversation || unsharedGossip.message.message.extendedTextMessage?.text || '';
+                
+                // Prepare the details for the system prompt
+                gossipDetails = `You have recent gossip about someone named '${contact.contactInfo.name}' who said: "${gossipText}"`;
+                systemInfo.push(`[GOSSIP_AVAILABLE] ${gossipDetails}`);
+                
+                gossipAvailable = true; // Flag that we found gossip
+                break; // Stop looking for more gossip once we've found one to share
+            }
         }
     }
-}
     
     if (userMemory.sharedMemories && userMemory.sharedMemories.length > 0) {
         systemInfo.push(`Inside Joke: You recently joked about "${userMemory.sharedMemories.slice(-1)[0]}".`);
@@ -623,13 +571,14 @@ for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
         
         // If gossip was shared, mark it as shared
         if (gossipAvailable) {
+            // Find the gossip that was just shared and update its status
             for (const [contactId, contact] of Object.entries(memoryData.contactMemory)) {
                 if (contact.weirdInteractions && contact.weirdInteractions.length > 0) {
                     const unsharedGossip = contact.weirdInteractions.find(g => !g.sharedWith.includes(userName));
                     if (unsharedGossip) {
                         unsharedGossip.sharedWith.push(userName);
                         Logger.action(`Gossip about ${contact.contactInfo.name} marked as shared with ${userName}`);
-                        break;
+                        break; // Exit after marking
                     }
                 }
             }
@@ -667,6 +616,8 @@ function splitMessageIntoParts(message) {
 // Main message sending function updated for Baileys
 // In hannah.js, update the sendHannahsMessage function to handle special actions:
 
+// in hannah.js, replace the entire `sendHannahsMessage` function with this one:
+
 async function sendHannahsMessage(client, chatId, text, userName, memoryData) {
     if (!text || !text.trim()) {
         Logger.debug('sendHannahsMessage received empty text. Ignoring.');
@@ -674,92 +625,82 @@ async function sendHannahsMessage(client, chatId, text, userName, memoryData) {
     }
 
     try {
-        Logger.debug(`Raw AI response: ${text}`);
-
-        // THE FIX IS HERE: The '/i' flag makes the match case-insensitive.
-        // It will now correctly find both '[ACTION_BLOCK]' and '[action_block]'.
+        Logger.debug(`Raw AI response for ${userName}: ${text}`);
         const actionBlockMatch = text.match(/\[ACTION_BLOCK\]([\s\S]*?)\[\/ACTION_BLOCK\]/i);
 
         if (!actionBlockMatch) {
-            Logger.debug(`No [ACTION_BLOCK] found. Sending raw text as fallback: ${text}`);
-            await client.sendMessage(chatId, { text: text });
+            Logger.error(`No [ACTION_BLOCK] found in AI response. Sending raw text as fallback.`);
+            await client.sendMessage(chatId, { text });
             return;
         }
 
         const actionBlockContent = actionBlockMatch[1];
-        Logger.debug(`Action block content: ${actionBlockContent}`);
+        const commandRegex = /\[(TEXT|FORWARD|REACT|RANT|SULK|PONDER)\]([\s\S]*?)\[\/\1\]/gi;
+        const commands = [...actionBlockContent.matchAll(commandRegex)];
+        let lastSentMessage = null;
 
-        let lastSentMessage = null; 
+        for (const command of commands) {
+            const actionType = command[1].toUpperCase();
+            const actionValue = command[2].trim();
 
-        // --- Handle [FORWARD] Actions ---
-        const forwardMatches = [...actionBlockContent.matchAll(/\[FORWARD\]([\s\S]*?)\[\/FORWARD\]/gi)];
-        if (forwardMatches.length > 0) {
-            for (const match of forwardMatches) {
-                const messageTextToFind = match[1].trim();
-                let messageToActuallyForward = null;
+            await client.sendPresenceUpdate('composing', chatId);
 
-                // Search all of memory for the weird interaction with this exact text
-                for (const contact of Object.values(memoryData.contactMemory)) {
-                    const found = contact.weirdInteractions?.find(interaction => {
-                        const storedText = interaction.message.message.conversation || interaction.message.message.extendedTextMessage?.text || '';
-                        return storedText === messageTextToFind;
-                    });
-                    if (found) {
-                        messageToActuallyForward = found.message;
-                        break;
+            switch (actionType) {
+                case 'TEXT':
+                case 'RANT':
+                case 'SULK':
+                case 'PONDER':
+                    const typingDelay = (actionValue.length * 80) + (Math.random() * 500);
+                    await new Promise(resolve => setTimeout(resolve, Math.min(typingDelay, 2500)));
+                    Logger.message(userName, actionValue, '→');
+                    lastSentMessage = await client.sendMessage(chatId, { text: actionValue });
+                    break;
+
+                case 'FORWARD_GOSSIP': // Changed from 'FORWARD'
+                    let gossipToForward = null;
+                    let sharedGossipObject = null;
+
+                    // Find the next piece of gossip that hasn't been shared with this user yet
+                    for (const contact of Object.values(memoryData.contactMemory)) {
+                        sharedGossipObject = contact.weirdInteractions?.find(interaction => 
+                            !interaction.sharedWith.includes(userName)
+                        );
+                        if (sharedGossipObject) {
+                            gossipToForward = sharedGossipObject.message;
+                            break;
+                        }
                     }
-                }
 
-                if (messageToActuallyForward) {
-                    Logger.action(`Found original message. Natively forwarding...`);
-                    // Use the native Baileys forward function
-                    await client.sendMessage(chatId, { forward: messageToActuallyForward });
-                } else {
-                    Logger.error(`Could not find original message for forwarding. Sending as text instead.`);
-                    // Fallback if the original message isn't in memory
-                    lastSentMessage = await client.sendMessage(chatId, { text: `[Forwarded Message]\n"${messageTextToFind}"` });
-                }
-                await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 500));
+                    if (gossipToForward && sharedGossipObject) {
+                        Logger.action(`Found unshared gossip. Natively forwarding...`);
+                        await client.sendMessage(chatId, { forward: gossipToForward });
+                        
+                        // IMPORTANT: Mark it as shared AFTER sending
+                        sharedGossipObject.sharedWith.push(userName);
+                        Logger.action(`Gossip from ${gossipToForward.key.remoteJid} marked as shared with ${userName}.`);
+
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    } else {
+                        Logger.error(`AI tried to use [FORWARD_GOSSIP], but no unshared gossip was found for this user.`);
+                        // Intentionally does nothing, preventing any message from being sent.
+                    }
+                    break;
+
+                case 'REACT':
+                    if (lastSentMessage) {
+                        Logger.debug(`Sending reaction: ${actionValue}`);
+                        await client.sendMessage(chatId, {
+                            react: { text: actionValue, key: lastSentMessage.key }
+                        });
+                    }
+                    break;
             }
+             await client.sendPresenceUpdate('paused', chatId);
+             await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
         }
-
-        // --- 2. Handle all Text-Based Messages ---
-        const messageMatches = [...actionBlockContent.matchAll(/\[(TEXT|RANT|SULK|PONDER)\]([\s\S]*?)\[\/\1\]/gi)]; // Also made case-insensitive
-        const messageTexts = messageMatches.map(match => match[2].trim()).filter(Boolean);
-
-        if (messageTexts.length > 0) {
-            Logger.debug(`Sending ${messageTexts.length} separate text messages...`);
-            for (let i = 0; i < messageTexts.length; i++) {
-                const message = messageTexts[i];
-                await client.sendPresenceUpdate('composing', chatId);
-                const typingDelay = (message.length * 80) + (Math.random() * 500);
-                await new Promise(resolve => setTimeout(resolve, Math.min(typingDelay, 3000)));
-                Logger.message(userName, message, '→');
-                lastSentMessage = await client.sendMessage(chatId, { text: message });
-                if (i < messageTexts.length - 1) {
-                    await client.sendPresenceUpdate('paused', chatId);
-                    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000));
-                }
-            }
-        }
-        
-        // --- 3. Handle [REACT] Action Last ---
-        const reactionMatches = [...actionBlockContent.matchAll(/\[REACT\]([👍😂❤️😮🤔🙏😊🙄]+)\[\/REACT\]/gi)]; // Also made case-insensitive
-        if (reactionMatches.length > 0 && lastSentMessage) {
-            const reaction = reactionMatches[0][1];
-            Logger.debug(`Sending reaction: ${reaction}`);
-            await client.sendMessage(chatId, {
-                react: {
-                    text: reaction,
-                    key: lastSentMessage.key
-                }
-            });
-        }
-        
-        await client.sendPresenceUpdate('paused', chatId);
 
     } catch (error) {
-        Logger.error('Error in sendHannahsMessage (Baileys)', error.message);
+        Logger.error('Critical Error in sendHannahsMessage (Baileys)', error.stack);
     }
 }
 
