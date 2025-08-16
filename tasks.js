@@ -241,27 +241,24 @@ async function shareGossip(client, memoryData) {
 
     // Find a friend who is eligible to RECEIVE gossip
     for (const [friendId, friendMemory] of Object.entries(memoryData.contactMemory)) {
-        // Must be a friend (score >= 20) and not currently busy
+        // Must be a friend (score >= 20) and we haven't talked in the last 30 mins
         if (friendMemory.interactionScore >= 20 && (Date.now() - (friendMemory.lastMessageTimestamp || 0) > 30 * 60 * 1000)) {
             
             // Now, find a piece of unshared gossip to tell them about
             for (const [gossipSourceId, gossipSourceContact] of Object.entries(memoryData.contactMemory)) {
-                // Can't gossip about the friend to themselves
-                if (friendId === gossipSourceId) continue;
+                if (friendId === gossipSourceId) continue; // Can't gossip about the friend to themselves
 
                 if (gossipSourceContact.weirdInteractions && gossipSourceContact.weirdInteractions.length > 0) {
                     const unsharedGossip = gossipSourceContact.weirdInteractions.find(g => !g.sharedWith.includes(friendId));
 
-                    // If we found a piece of gossip and feel like sharing (30% chance)
+                    // If we found gossip and feel like sharing (30% chance)
                     if (unsharedGossip && Math.random() < 0.3) {
                         const gossipText = unsharedGossip.message.message.conversation || unsharedGossip.message.message.extendedTextMessage?.text || '';
                         
-                        // This prompt tells Hannah to INITIATE the conversation
-                        const situation = `You have some juicy gossip about someone named '${gossipSourceContact.contactInfo.name}' who sent you a weird message: "${gossipText}". You've decided to start a conversation with your friend '${friendMemory.contactInfo.name}' to tell them about it.`;
+                        const situation = `You have some juicy gossip about someone named '${gossipSourceContact.contactInfo.name}' who sent you a weird message: "${gossipText}". You've decided to START a conversation with your friend '${friendMemory.contactInfo.name}' to tell them about it.`;
                         
                         Logger.action(`PROACTIVE GOSSIP: Decided to tell ${friendMemory.contactInfo.name} about ${gossipSourceContact.contactInfo.name}.`);
                         
-                        // Generate the opening messages for the AI
                         jobs.push(...await generateProactiveJob(situation, friendId, friendMemory));
                         
                         // We only start one proactive chat per cycle to avoid spamming

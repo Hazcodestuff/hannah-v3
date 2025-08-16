@@ -236,17 +236,6 @@ function extractAndStoreMemories(contactId, msg, response) { // Note: the parame
         triggerGossipAboutContact(contactId, weirdInteraction);
     }
     
-    // Store important memories
-    const importantKeywords = ['birthday', 'anniversary', 'breakup', 'new job', 'moved', 'travel', 'sick', 'family'];
-    for (const keyword of importantKeywords) {
-        if (messageLower.includes(keyword)) {
-            const memory = `${keyword}: ${message.substring(0, 100)}`;
-            if (!userMemory.sharedMemories.includes(memory)) {
-                userMemory.sharedMemories.push(memory);
-            }
-        }
-    }
-    
     // Track conversation topics
     const topics = ['music', 'art', 'biology', 'school', 'friends', 'family', 'relationship', 'food'];
     for (const topic of topics) {
@@ -507,43 +496,91 @@ class HannahBot {
         });
 
         // Handle incoming messages
-        this.client.ev.on('messages.upsert', async (m) => {
-            try {
-                const msg = m.messages[0];
-                if (!msg.message || msg.key.fromMe) return;
-                
-                const contactId = msg.key.remoteJid;
-                const messageBody = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-                
-                if (!messageBody) return;
-                
-                Logger.message(msg.pushName || contactId, messageBody, '←');
-                
-                if (!memoryData.contactMemory[contactId]) {
-                    initializeUserMemory(contactId, { pushname: msg.pushName || "Unknown" });
-                }
-                
-                const userMemory = memoryData.contactMemory[contactId];
-                const quotedMessageText = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.conversation || null;
-                
-                const aiResponse = await getAiResponse(contactId, messageBody, memoryData, quotedMessageText);
-                
-                if (aiResponse) {await sendHannahsMessage(this.client, contactId, aiResponse, userMemory.contactInfo.name, memoryData);
+        // In index.js
 
-                    // 4. Update conversation history and memory as before.
-                    updateConversationHistory(contactId, messageBody, aiResponse);
-                    extractAndStoreMemories(contactId, msg, aiResponse);
-                    updateFriendshipScore(contactId, 1, 'Positive interaction');
-                }
-            } catch (error) {
-                Logger.error(`Error in message handler: ${error.message}`);
+// in index.js
 
-                // Check if it's a decryption error and handle it
-                if (error.message.includes('decrypt') || error.message.includes('Bad MAC')) {
-                    this.handleDecryptionError();
-                }
+this.client.ev.on('messages.upsert', async (m) => {
+    try {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
+
+        let contactId = msg.key.remoteJid;
+        let messageBody = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        if (!messageBody) return;
+        
+        // --- This entire block is our NEW Agent Logic ---
+
+        const isGroup = contactId.endsWith('@g.us');
+        const botNumber = this.client.user?.id.split(':')[0];
+        const wasMentioned = botNumber && (messageBody.includes(`@${botNumber}`) || messageBody.toLowerCase().includes('hannah'));
+
+        if (isGroup && !wasMentioned) {
+             const interestsRegex = /\b(music|art|biology|band|song|artist)\b/i;
+             if (!interestsRegex.test(messageBody) || Math.random() > 0.20) {
+                 Logger.debug(`Ignoring group message because Hannah was not mentioned.`);
+                 return;
+             }
+             Logger.action("Hannah is jumping into the group chat due to an interesting topic.");
+        }
+
+        Logger.message(msg.pushName || contactId, messageBody, '←');
+        if (!memoryData.contactMemory[contactId]) {
+            initializeUserMemory(contactId, { pushname: msg.pushName || "Unknown" });
+        }
+        
+        let userMemory = memoryData.contactMemory[contactId];
+        let quotedMessageText = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.conversation || null;
+        
+        // === STEP 1: Initial AI Response ===
+        let aiResponse = await getAiResponse(contactId, messageBody, memoryData, quotedMessageText);
+
+        if (!aiResponse || aiResponse.includes('[IGNORE]')) {
+            Logger.action(`Hannah decided to ignore the message from ${userMemory.contactInfo.name}.`);
+            userMemory.lastMessageTimestamp = Date.now();
+            await saveMemory();
+            return;
+        }
+        
+        // === STEP 2: Process initial response & check for tool use ===
+        let searchQuery = await sendHannahsMessage(this.client, contactId, aiResponse, userMemory.contactInfo.name, memoryData);
+        
+        // Update history AFTER the first message is sent
+        updateConversationHistory(contactId, messageBody, aiResponse);
+        extractAndStoreMemories(contactId, msg, aiResponse);
+        updateFriendshipScore(contactId, 1, 'Positive interaction');
+
+        // === STEP 3: If a tool is needed, execute it ===
+        if (searchQuery) {
+            Logger.system("--- TOOL EXECUTION PHASE ---");
+            // Here you would normally run the Python code. 
+            // We simulate getting the search output. 
+            // In your real environment, the `code_output` would be automatically provided.
+            
+            // This is a placeholder for your tool's actual output.
+            // Replace this with the real call in your environment if needed.
+            const searchToolOutput = `[SEARCH RESULT FOR "${searchQuery}"] 1. The 1975 - Girls (Official Video): https://www.youtube.com/watch?v=QlsXIqg_i4E`;
+            
+            Logger.system(`Tool output received: ${searchToolOutput}`);
+            
+            // === STEP 4: Get final AI response using the tool output ===
+            Logger.system("--- FINAL RESPONSE PHASE ---");
+            let finalAiResponse = await getAiResponse(contactId, searchToolOutput, memoryData, null);
+
+            if (finalAiResponse && !finalAiResponse.includes('[IGNORE]')) {
+                 await sendHannahsMessage(this.client, contactId, finalAiResponse, userMemory.contactInfo.name, memoryData);
+                 updateConversationHistory(contactId, searchToolOutput, finalAiResponse); // Log tool result as user msg
             }
-        });
+        }
+        // --- Agent Logic Ends ---
+        
+    } catch (error) {
+        Logger.error(`Error in message handler: ${error.stack}`);
+        if (error.message.includes('decrypt') || error.message.includes('Bad MAC')) {
+            this.handleDecryptionError();
+        }
+    }
+});
         
         // Handle app state updates (for session management)
         this.client.ev.on('app.state', (update) => {

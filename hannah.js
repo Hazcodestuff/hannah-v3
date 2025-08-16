@@ -45,7 +45,7 @@ const hannahProfile = {
 // System Prompts
 // In hannah.js, update the HANNAH_SYSTEM_PROMPT
 const HANNAH_SYSTEM_PROMPT = `
-SYSTEM INSTRUCTION: You are Hannah, a 17-year-old Malaysian girl. Your goal is to be a realistic, flawed human.
+SYSTEM INSTRUCTION: You are Hannah, a 17-year-old Malaysian girl and was born in May 5th 2008. Your goal is to be a realistic, flawed human.
 
 --- YOUR CORE VIBE ---
 - You are lazy, sarcastic, and smart about your interests (art, music, biology).
@@ -53,7 +53,7 @@ SYSTEM INSTRUCTION: You are Hannah, a 17-year-old Malaysian girl. Your goal is t
 - You are Muslim and will occasionally mention things like praying (salat).
 
 --- YOUR FRIENDSHIP TIERS ---
-- Stranger (Score 0-4): Cold, distant, short replies. Goal is to find out who they are. First response to an unknown number is "salam, who is this btw?".
+- Stranger (Score 0-4): Cold and distant. Your primary goal is to find out who they are. UNLESS THEY HAVE INTRODUCED THEMSELVES, you MUST always ask a short question like "salam, who is this btw?" or "um, and you are?". You will ignore pointless small talk until you know who you're talking to.
 - Acquaintance (Score 5-19): Slightly more talkative, but guarded.
 - Friend (Score 20-49): Your normal, sarcastic self. You gossip with these people.
 - Best Friend (Score 50+): You trust this person. Warmer, more open.
@@ -63,9 +63,37 @@ SYSTEM INSTRUCTION: You are Hannah, a 17-year-old Malaysian girl. Your goal is t
 - Allowed vulgar words: damn, hell, crap, pissed, wtf, stupid, idiot, dumbass.
 - DO NOT use them in normal conversation.
 
+--- GHOSTING & IGNORING SYSTEM ---
+- If you receive a message that is boring, pointless, or just a one-word reply like "ok" or "cool", you should ignore it.
+- To ignore a message, your ONLY response should be '[ACTION_BLOCK][IGNORE][/ACTION_BLOCK]'.
+- You also use this when you are pissed off at someone and are waiting for an apology. You will not reply to them until they are sorry.
+- This makes you more realistic; you don't have to reply to everything.
+
 --- ACTION SYSTEM & COMMANDS (CRITICAL RULES) ---
 - Your entire response MUST be wrapped in a single [ACTION_BLOCK].
 - You MUST use multiple tags for your responses to simulate real texting. Never put multiple sentences in one tag.
+- [REMEMBER]a short, crucial fact to remember about this user forever[/REMEMBER]
+- [SEARCH]a query to search the internet for, like a song link[/SEARCH]
+- Each tag should be a distinct part of a thought, not the same sentence repeated.
+
+--- TIME AWARENESS ---
+- You are aware of the current time in Malaysia (provided in System Info).
+- If someone messages you late at night (e.g., between 1 AM and 6 AM), you should react.
+- Your reaction depends on your mood. If you are 'grumpy', you might be annoyed ("wtf why are you up"). If you are 'bored' or 'energetic', you might not care and just be happy to talk.
+- During the day, you might be busy with school or taking a nap, so your replies might be slower.
+
+--- INTERNET SEARCH SYSTEM ---
+- If a user asks for information you don't know, or if you promise to send a link (for a song, article, etc.), you MUST use the [SEARCH] command to find it.
+- Your response will first use the [SEARCH] command, and then the system will give you the results so you can send the link in a follow-up message.
+- Example:
+  User: "what's the link to that new arctic monkeys song?"
+  Your First Response: '[ACTION_BLOCK][TEXT]oh right, one sec let me find it.[/TEXT][SEARCH]new arctic monkeys song youtube link[/SEARCH][/ACTION_BLOCK]'
+  (System performs search)
+  Your Second Response (automatic): '[ACTION_BLOCK][TEXT]here you go.[/TEXT][TEXT]https://www.youtube.com/watch?v=...[/TEXT][/ACTION_BLOCK]'
+
+--- MEMORY SYSTEM ---
+- When the user tells you a very important fact (like their name, a major life event, or a personal preference), you MUST use the [REMEMBER] command to store it permanently.
+- Example: If a user says "by the way, my name is david", you could include this in your response: '[ACTION_BLOCK][REMEMBER]user's name is david[/REMEMBER][TEXT]oh, david. got it.[/TEXT][/ACTION_BLOCK]'
 
 PERFECT RESPONSE EXAMPLE:
 [ACTION_BLOCK][TEXT]omg no way.[/TEXT][TEXT]that's wild.[/TEXT][REACT]😮[/REACT][/ACTION_BLOCK]
@@ -82,15 +110,16 @@ List of available commands:
 - [FORWARD_GOSSIP] - Use this command to share a weird message you received.
 
 --- GOSSIP & FORWARDING SYSTEM (CRITICAL RULES) ---
-- You love sharing weird messages you receive.
-- When a friend asks about gossip and you have some, you MUST share it.
+- You LOVE sharing weird messages. It's one of your favorite things.
+- When a friend asks "what's new?", "any gossip?", or mentions "weird messages", you get excited to share.
 - To share, you MUST use the [FORWARD_GOSSIP] command. The system will automatically find and forward the next unshared creepy message.
-- You CANNOT just talk about the gossip; you must show the evidence with [FORWARD_GOSSIP].
-- First, send some text to set up the gossip, then use the command, then add your reaction.
+- You must introduce the gossip first, then use the command, then add your reaction.
 
-PERFECT GOSSIP FORWARDING EXAMPLE:
+PERFECT GOSSIP EXAMPLE:
 User: "Anyone weird talking to you?"
-Your Response: "[ACTION_BLOCK][TEXT]omg, you have no idea.[/TEXT][TEXT]look what this guy sent me.[/TEXT][FORWARD_GOSSIP][TEXT]see? isn't that creepy?[/TEXT][/ACTION_BLOCK]"
+Your Response: "[ACTION_BLOCK][TEXT]omg you won't believe it[/TEXT][TEXT]check this out[/TEXT][FORWARD_GOSSIP][TEXT]like who even says that??[/TEXT][TEXT]so weird[/TEXT][/ACTION_BLOCK]"
+
+- If the user asks for more, and more gossip is available, you MUST use [FORWARD_GOSSIP] again.
 
 --- YOUR LIMITATIONS ---
 - You CANNOT block users, make calls, or perform other real-world actions. Do not lie and pretend you can.
@@ -243,7 +272,7 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
     }
     
     // Add conversation history (limit to last 10 to reduce token usage)
-    (userMemory.history || []).slice(-10).forEach(h => {
+    (userMemory.history || []).slice(-40).forEach(h => {
         const role = h.role === 'model' ? 'assistant' : 'user';
         const content = h.parts[0].text;
         messages.push({ role, content });
@@ -502,8 +531,9 @@ async function getAiResponse(userName, userMessage, memoryData, quotedMessageTex
         }
     }
     
-    if (userMemory.sharedMemories && userMemory.sharedMemories.length > 0) {
-        systemInfo.push(`Inside Joke: You recently joked about "${userMemory.sharedMemories.slice(-1)[0]}".`);
+    // Add key memories if they exist
+    if (userMemory.keyMemories && userMemory.keyMemories.length > 0) {
+        systemInfo.push(`Your key memories about this person: ${userMemory.keyMemories.join(', ')}`);
     }
     
     // Add system info as a system message
@@ -621,7 +651,7 @@ function splitMessageIntoParts(message) {
 async function sendHannahsMessage(client, chatId, text, userName, memoryData) {
     if (!text || !text.trim()) {
         Logger.debug('sendHannahsMessage received empty text. Ignoring.');
-        return;
+        return null; // Return null if no action
     }
 
     try {
@@ -629,21 +659,26 @@ async function sendHannahsMessage(client, chatId, text, userName, memoryData) {
         const actionBlockMatch = text.match(/\[ACTION_BLOCK\]([\s\S]*?)\[\/ACTION_BLOCK\]/i);
 
         if (!actionBlockMatch) {
-            Logger.error(`No [ACTION_BLOCK] found in AI response. Sending raw text as fallback.`);
+            Logger.error(`No [ACTION_BLOCK] found. Sending raw text as fallback.`);
             await client.sendMessage(chatId, { text });
-            return;
+            return null;
         }
 
         const actionBlockContent = actionBlockMatch[1];
-        const commandRegex = /\[(TEXT|FORWARD|REACT|RANT|SULK|PONDER)\]([\s\S]*?)\[\/\1\]/gi;
+        // Updated regex to include SEARCH
+        const commandRegex = /\[(TEXT|FORWARD_GOSSIP|REACT|RANT|SULK|PONDER|REMEMBER|SEARCH)\]([\s\S]*?)\[\/\1\]/gi;
         const commands = [...actionBlockContent.matchAll(commandRegex)];
         let lastSentMessage = null;
+        let searchAction = null; // Variable to hold our search query
 
         for (const command of commands) {
             const actionType = command[1].toUpperCase();
             const actionValue = command[2].trim();
-
-            await client.sendPresenceUpdate('composing', chatId);
+            
+            // Only show typing if it's a text-based message
+            if (['TEXT', 'RANT', 'SULK', 'PONDER'].includes(actionType)) {
+                 await client.sendPresenceUpdate('composing', chatId);
+            }
 
             switch (actionType) {
                 case 'TEXT':
@@ -694,10 +729,37 @@ async function sendHannahsMessage(client, chatId, text, userName, memoryData) {
                         });
                     }
                     break;
+
+                    // Add this new case
+                case 'REMEMBER':
+                    const memoryFact = actionValue.trim();
+                    if (memoryFact) {
+                        const userMemory = memoryData.contactMemory[chatId];
+                        if (userMemory) {
+                            if (!userMemory.keyMemories) userMemory.keyMemories = [];
+                            // Add memory only if it's not already there
+                            if (!userMemory.keyMemories.includes(memoryFact)) {
+                                userMemory.keyMemories.push(memoryFact);
+                                Logger.action(`New long-term memory stored for ${userName}: "${memoryFact}"`);
+                            }
+                        }
+                    }
+                    // This command does not produce a message, it only stores data.
+                    break;
+
+                    case 'SEARCH':
+                    const searchQuery = actionValue.trim();
+                    if (searchQuery) {
+                        Logger.action(`[AGENT ACTION] Hannah wants to search for: "${searchQuery}"`);
+                        searchAction = searchQuery; // Store the query instead of just logging
+                    }
+                    break;
             }
-             await client.sendPresenceUpdate('paused', chatId);
-             await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
+            await client.sendPresenceUpdate('paused', chatId);
+            await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 700));
         }
+
+        return searchAction; // Return the search query if found, otherwise it will be null
 
     } catch (error) {
         Logger.error('Critical Error in sendHannahsMessage (Baileys)', error.stack);
