@@ -2,12 +2,15 @@ services:
   - type: web
     name: hannah-whatsapp-bot
     env: node
+    plan: free
     buildCommand: npm install
     startCommand: node index.js
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: GOOGLE_DRIVE_FOLDER_ID
-        sync: false # Set this in the Render dashboard
+        sync: false
       - key: GROQ_API_KEY
-        sync: false # Set this in the Render dashboard
+        sync: false
+    region: singapore
