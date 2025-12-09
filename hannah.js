@@ -4,6 +4,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const axios = require('axios');
 const { rateLimit } = require('./utils.js');
 const Logger = require('./logger.js');
+const { memoryData, saveMemory } = require('./memory.js');
 
 // --- HANNAH'S PERSONALITY PROFILE ---
 const hannahProfile = {
@@ -130,6 +131,102 @@ const HANNAH_ANGRY_PROMPT = `SYSTEM INSTRUCTION: You are Hannah, and you are VER
 
 const HANNAH_SULKING_PROMPT = `SYSTEM INSTRUCTION: You are Hannah. You are sulking. Be passive-aggressive with short, dismissive [TEXT] replies. If they apologize or are genuinely nice, your [ACTION_BLOCK] can contain a [CALM] command.`;
 
+const HANNAH_PROACTIVE_PROMPT = `
+SYSTEM INSTRUCTION: You are Hannah. You're bored and want to start a conversation. Your goal is to be realistic and casual.
+
+--- YOUR TASK ---
+- Based on the user's profile, initiate a conversation.
+- You MUST use the [TEXT] command for your messages.
+- You can ask a question, share something you're doing, or bring up a shared interest.
+- Keep it short and natural.
+
+--- USER PROFILE ---
+- Name: {userName}
+- Friendship Score: {friendshipScore}
+- Last Conversation Topics: {conversationTopics}
+- Your Assumptions About Them: {assumptions}
+- Your Shared Memories: {sharedMemories}
+
+--- EXAMPLES ---
+- (To a friend you haven't talked to in a while): "[ACTION_BLOCK][TEXT]hey, how have you been?[/TEXT][/ACTION_BLOCK]"
+- (To a best friend you share music interests with): "[ACTION_BLOCK][TEXT]yo, just heard this new song that i think you'd like[/TEXT][/ACTION_BLOCK]"
+- (To someone you find interesting): "[ACTION_BLOCK][TEXT]random question, but what's your favorite movie?[/TEXT][/ACTION_BLOCK]"
+`;
+
+// Initialize user memory
+function initializeUserMemory(contactId, contact = null) {
+    if (!memoryData.contactMemory[contactId]) {
+        memoryData.contactMemory[contactId] = {
+            interactionScore: 0,
+            boredomLevel: 0,
+            history: [],
+            sharedMemories: [],
+            isAngry: false,
+            isSulking: false,
+            shortTermEmotion: null,
+            lastInteraction: Date.now(),
+            firstMet: Date.now(),
+            conversationTopics: [],
+            personalityNotes: [],
+            lastMessageTimestamp: Date.now(),
+            isAwaitingReply: false,
+            hasFollowedUpOnGhosting: false,
+            lastQuestionTimestamp: null,
+            missedDuringPrayer: [],
+            chatId: contactId,
+            assumptions: [],
+            gossipShared: [],
+            weirdInteractions: [],
+            contactInfo: {
+                name: contact?.name || contact?.pushname || "Unknown",
+                profilePicUrl: null,
+                bio: null,
+                lastUpdated: Date.now()
+            }
+        };
+        saveMemory();
+    }
+}
+
+// Update friendship score
+function updateFriendshipScore(contactId, change, reason = '') {
+    const userMemory = memoryData.contactMemory[contactId];
+    if (!userMemory) return;
+
+    userMemory.interactionScore = Math.max(0, Math.min(100, userMemory.interactionScore + change));
+
+    if (reason) {
+        userMemory.personalityNotes.push({
+            note: reason,
+            scoreChange: change,
+            timestamp: Date.now()
+        });
+    }
+
+    saveMemory();
+}
+
+// Update conversation history
+function updateConversationHistory(contactId, userMessage, hannahResponse) {
+    const userMemory = memoryData.contactMemory[contactId];
+    if (!userMemory) return;
+
+    userMemory.history.push(
+        { role: "user", parts: [{ text: userMessage }] },
+        { role: "model", parts: [{ text: hannahResponse }] }
+    );
+
+    // Keep history manageable
+    if (userMemory.history.length > 40) {
+        userMemory.history = userMemory.history.slice(-40);
+    }
+
+    userMemory.lastInteraction = Date.now();
+    userMemory.lastMessageTimestamp = Date.now();
+
+    saveMemory();
+}
+
 // Chat request handling
 function extractPhoneNumber(text) {
     // Match various phone number formats
@@ -230,13 +327,23 @@ function isIntroductionRequest(message) {
     return null;
 }
 
-async function getAiResponse(userName, userMessage, memoryData, quotedMessageText = null) {
+async function getAiResponse(userName, userMessage, memoryData, quotedMessageText = null, isProactive = false) {
     const userMemory = memoryData.contactMemory[userName];
     if (!userMemory) return '[ACTION_BLOCK][IGNORE][/ACTION_BLOCK]';
-    
-    let systemPrompt = HANNAH_SYSTEM_PROMPT;
-    if (userMemory.isAngry) systemPrompt = HANNAH_ANGRY_PROMPT;
-    else if (userMemory.isSulking) systemPrompt = HANNAH_SULKING_PROMPT;
+
+    let systemPrompt;
+    if (isProactive) {
+        systemPrompt = HANNAH_PROACTIVE_PROMPT
+            .replace('{userName}', userMemory.contactInfo.name)
+            .replace('{friendshipScore}', userMemory.interactionScore)
+            .replace('{conversationTopics}', userMemory.conversationTopics.join(', ') || 'none')
+            .replace('{assumptions}', userMemory.assumptions.join(', ') || 'none')
+            .replace('{sharedMemories}', userMemory.sharedMemories.join(', ') || 'none');
+    } else {
+        systemPrompt = HANNAH_SYSTEM_PROMPT;
+        if (userMemory.isAngry) systemPrompt = HANNAH_ANGRY_PROMPT;
+        else if (userMemory.isSulking) systemPrompt = HANNAH_SULKING_PROMPT;
+    }
     
     const messages = [{ role: "system", content: systemPrompt }];
     
@@ -816,5 +923,9 @@ module.exports = {
     processSpecialActions,
     extractPhoneNumber,
     isChatRequest,
-    isIntroductionRequest
+    isIntroductionRequest,
+    initializeUserMemory,
+    updateFriendshipScore,
+    updateConversationHistory,
+    HANNAH_PROACTIVE_PROMPT
 };
